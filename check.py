@@ -1,5 +1,20 @@
 from gpiozero import Buzzer
+from time import sleep
 
-# Buzzer on BCM 15
-bz = Buzzer(17)
-bz.beep(on_time=0.1, off_time=0.1, n=3) # Beep 3 times quickly
+# If your buzzer makes noise when it shouldn't, 
+# change active_high to False
+buzzer = Buzzer(17, active_high=True) 
+
+print("Buzzer test starting...")
+
+try:
+    while True:
+        print("Beep")
+        buzzer.on()
+        sleep(0.5)
+        
+        print("Silence")
+        buzzer.off()
+        sleep(0.5)
+except KeyboardInterrupt:
+    print("Stopped by user")
