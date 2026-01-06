@@ -14,19 +14,17 @@ Env vars (optional):
 
 from __future__ import annotations
 
+import logging
 import json
+import math
 import os
 import time
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
-try:  # optional dependencies (I2C driver stack)
-    import board  # type: ignore
-    import busio  # type: ignore
+try:  # optional dependency
     import adafruit_mpu6050  # type: ignore
 except Exception:  # pragma: no cover
-    board = None  # type: ignore
-    busio = None  # type: ignore
     adafruit_mpu6050 = None  # type: ignore
 
 try:  # optional dependency
@@ -35,6 +33,10 @@ except Exception:  # pragma: no cover
     KafkaProducer = None  # type: ignore
 
 from db_interfaces.mpu6050_db import store_mpu6050_reading
+from controllers.i2c_utils import get_i2c, is_address_present, normalize_i2c_address
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -46,12 +48,19 @@ def _c_to_f(celsius: float) -> float:
 
 
 def _get_mpu6050():
-    if board is None or busio is None or adafruit_mpu6050 is None:  # pragma: no cover
+    if adafruit_mpu6050 is None:  # pragma: no cover
         raise RuntimeError(
             "MPU6050 driver not available. Install adafruit-circuitpython-mpu6050 and dependencies."
         )
 
-    i2c = busio.I2C(board.SCL, board.SDA)
+    i2c = get_i2c()
+    # Most common addresses are 0x68 (AD0 low) or 0x69 (AD0 high)
+    addr = normalize_i2c_address(os.getenv("MPU6050_I2C_ADDRESS", "0x68"), 0x68)
+    if not is_address_present(addr, i2c=i2c):
+        raise RuntimeError(
+            f"MPU6050 not detected on I2C (expected address 0x{addr:02x})."
+        )
+
     return adafruit_mpu6050.MPU6050(i2c)
 
 
@@ -74,6 +83,30 @@ def read_mpu6050(
         float(gz),
         temp_c,
         _c_to_f(temp_c),
+    )
+
+
+def _simulate_mpu6050() -> Tuple[float, float, float, float, float, float, float, float]:
+    # Simulated raw values in the same units expected by read_mpu6050:
+    # accel m/s^2, gyro rad/s, temp C/F.
+    t = time.time()
+    g = 9.80665
+    ax = 0.15 * math.sin(t / 10.0)
+    ay = 0.15 * math.cos(t / 12.0)
+    az = g + 0.10 * math.sin(t / 8.0)
+    gx = 0.02 * math.sin(t / 7.0)
+    gy = 0.02 * math.cos(t / 9.0)
+    gz = 0.02 * math.sin(t / 11.0)
+    temp_c = 26.0 + 0.5 * math.sin(t / 60.0)
+    return (
+        float(ax),
+        float(ay),
+        float(az),
+        float(gx),
+        float(gy),
+        float(gz),
+        float(temp_c),
+        _c_to_f(float(temp_c)),
     )
 
 
@@ -105,12 +138,28 @@ def run_poll_loop(
     )
     topic = kafka_topic or os.getenv("MPU6050_KAFKA_TOPIC", "mpu6050.readings")
 
-    mpu = _get_mpu6050()
+    mpu = None
+    is_simulated = False
+    try:
+        mpu = _get_mpu6050()
+    except Exception as e:
+        is_simulated = True
+        logger.warning("MPU6050 init failed (%s). USING SIMULATED DATA.", e)
     producer = _get_kafka_producer()
 
     while True:
         recorded_at = _utc_now()
-        ax, ay, az, gx, gy, gz, temp_c, temp_f = read_mpu6050(mpu)
+        if is_simulated:
+            ax, ay, az, gx, gy, gz, temp_c, temp_f = _simulate_mpu6050()
+        else:
+            try:
+                ax, ay, az, gx, gy, gz, temp_c, temp_f = read_mpu6050(mpu)
+            except Exception as e:
+                is_simulated = True
+                logger.warning(
+                    "MPU6050 read failed (%s). SWITCHING TO SIMULATED DATA.", e
+                )
+                ax, ay, az, gx, gy, gz, temp_c, temp_f = _simulate_mpu6050()
 
         # Convert to more standard units for storage:
         # - accel from m/s^2 -> g
@@ -133,6 +182,7 @@ def run_poll_loop(
             gyro_z_dps=gyro_z_dps,
             temperature_c=temp_c,
             temperature_f=temp_f,
+            is_simulated=is_simulated,
             recorded_at=recorded_at,
         )
 
@@ -150,6 +200,7 @@ def run_poll_loop(
                     "gyro_z_dps": gyro_z_dps,
                     "temperature_c": temp_c,
                     "temperature_f": temp_f,
+                    "is_simulated": is_simulated,
                 },
             )
 
@@ -157,4 +208,5 @@ def run_poll_loop(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     run_poll_loop()

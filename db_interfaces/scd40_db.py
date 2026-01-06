@@ -46,6 +46,10 @@ def ensure_scd40_table_exists(*, table_name: str = DEFAULT_TABLE_NAME) -> None:
         with conn.cursor() as cur:
             cur.execute(ddl_table)
             cur.execute(ddl_index)
+
+            cur.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS is_simulated BOOLEAN NOT NULL DEFAULT FALSE;"
+            )
         conn.commit()
 
 
@@ -55,6 +59,7 @@ def store_scd40_reading(
     temperature_c: float,
     temperature_f: float,
     humidity_rh: float,
+    is_simulated: bool = False,
     recorded_at: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ) -> int:
@@ -64,8 +69,8 @@ def store_scd40_reading(
     ensure_scd40_table_exists(table_name=table_name)
 
     sql = f"""
-    INSERT INTO {table_name} (recorded_at, co2_ppm, temperature_c, temperature_f, humidity_rh)
-    VALUES (%s, %s, %s, %s, %s)
+    INSERT INTO {table_name} (recorded_at, co2_ppm, temperature_c, temperature_f, humidity_rh, is_simulated)
+    VALUES (%s, %s, %s, %s, %s, %s)
     RETURNING id;
     """
 
@@ -79,6 +84,7 @@ def store_scd40_reading(
                     float(temperature_c),
                     float(temperature_f),
                     float(humidity_rh),
+                    bool(is_simulated),
                 ),
             )
             new_id = cur.fetchone()[0]
@@ -96,7 +102,7 @@ def fetch_recent_scd40(
     ensure_scd40_table_exists(table_name=table_name)
 
     sql = f"""
-    SELECT recorded_at, co2_ppm, temperature_c, temperature_f, humidity_rh
+    SELECT recorded_at, co2_ppm, temperature_c, temperature_f, humidity_rh, is_simulated
     FROM {table_name}
     ORDER BY recorded_at DESC
     LIMIT %s;
@@ -114,6 +120,7 @@ def fetch_recent_scd40(
             "temperature_c": r[2],
             "temperature_f": r[3],
             "humidity_rh": r[4],
+            "is_simulated": r[5],
         }
         for r in rows
     ]

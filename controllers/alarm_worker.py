@@ -31,6 +31,7 @@ Buzzer:
 
 from __future__ import annotations
 
+import logging
 import json
 import os
 import time
@@ -50,6 +51,9 @@ except Exception:  # pragma: no cover
     KafkaProducer = None  # type: ignore
 
 from db_interfaces.alarm_db import store_alarm_event
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -91,9 +95,18 @@ def _get_thresholds() -> Thresholds:
 
 def _get_buzzer():
     if Buzzer is None:  # pragma: no cover
-        raise RuntimeError(
-            "gpiozero not available. Install gpiozero (and run on Pi) to drive the buzzer."
+        logger.warning(
+            "gpiozero not available. BUZZER OUTPUT WILL BE SIMULATED (no GPIO)."
         )
+
+        class _SimBuzzer:
+            def on(self):
+                logger.warning("BUZZER SIMULATED: ON")
+
+            def off(self):
+                logger.warning("BUZZER SIMULATED: OFF")
+
+        return _SimBuzzer()
 
     pin = _env_int("BUZZER_GPIO_PIN", "17")
     active_high = _env_bool("BUZZER_ACTIVE_HIGH", "true")
@@ -255,6 +268,7 @@ def evaluate_and_alarm(
 
 
 def run() -> None:
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     thresholds = _get_thresholds()
     buzzer = _get_buzzer()
     consumer, producer, alarm_topic = _get_kafka()

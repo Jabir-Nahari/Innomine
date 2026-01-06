@@ -42,6 +42,11 @@ def ensure_ds18b20_table_exists(*, table_name: str = DEFAULT_TABLE_NAME) -> None
         with conn.cursor() as cur:
             cur.execute(ddl_table)
             cur.execute(ddl_index)
+
+            # Backward-compatible schema evolution.
+            cur.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS is_simulated BOOLEAN NOT NULL DEFAULT FALSE;"
+            )
         conn.commit()
 
 
@@ -49,6 +54,7 @@ def store_ds18b20_reading(
     *,
     celsius: float,
     fahrenheit: float,
+    is_simulated: bool = False,
     recorded_at: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ) -> int:
@@ -58,14 +64,17 @@ def store_ds18b20_reading(
     ensure_ds18b20_table_exists(table_name=table_name)
 
     sql = f"""
-    INSERT INTO {table_name} (recorded_at, celsius, fahrenheit)
-    VALUES (%s, %s, %s)
+    INSERT INTO {table_name} (recorded_at, celsius, fahrenheit, is_simulated)
+    VALUES (%s, %s, %s, %s)
     RETURNING id;
     """
 
     with db_common.get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (recorded_at, float(celsius), float(fahrenheit)))
+            cur.execute(
+                sql,
+                (recorded_at, float(celsius), float(fahrenheit), bool(is_simulated)),
+            )
             new_id = cur.fetchone()[0]
         conn.commit()
 
@@ -80,7 +89,7 @@ def fetch_recent_ds18b20(
     ensure_ds18b20_table_exists(table_name=table_name)
 
     sql = f"""
-    SELECT recorded_at, celsius, fahrenheit
+    SELECT recorded_at, celsius, fahrenheit, is_simulated
     FROM {table_name}
     ORDER BY recorded_at DESC
     LIMIT %s;
@@ -92,5 +101,11 @@ def fetch_recent_ds18b20(
             rows = cur.fetchall()
 
     return [
-        {"recorded_at": r[0], "celsius": r[1], "fahrenheit": r[2]} for r in rows
+        {
+            "recorded_at": r[0],
+            "celsius": r[1],
+            "fahrenheit": r[2],
+            "is_simulated": r[3],
+        }
+        for r in rows
     ]

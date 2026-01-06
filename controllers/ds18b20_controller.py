@@ -15,8 +15,10 @@ Env vars (optional):
 
 from __future__ import annotations
 
+import logging
 import json
 import os
+import math
 import time
 from datetime import datetime, timezone
 from typing import Optional, Tuple
@@ -32,6 +34,9 @@ except Exception:  # pragma: no cover
     W1ThermSensor = None  # type: ignore
 
 from db_interfaces.ds18b20_db import store_ds18b20_reading
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -83,6 +88,13 @@ def read_ds18b20_temperature() -> Tuple[float, float]:
     return c, _c_to_f(c)
 
 
+def _simulate_ds18b20_temperature() -> Tuple[float, float]:
+    # Stable, obviously-fake but plausible values.
+    t = time.time()
+    c = 22.0 + 2.0 * math.sin(t / 30.0)
+    return float(c), _c_to_f(float(c))
+
+
 def _get_kafka_producer():
     if os.getenv("ENABLE_KAFKA", "false").lower() not in {"1", "true", "yes"}:
         return None
@@ -114,9 +126,23 @@ def run_poll_loop(
 
     while True:
         recorded_at = _utc_now()
-        c, f = read_ds18b20_temperature()
+        is_simulated = False
+        try:
+            c, f = read_ds18b20_temperature()
+        except Exception as e:
+            is_simulated = True
+            c, f = _simulate_ds18b20_temperature()
+            logger.warning(
+                "DS18B20 read failed (%s). USING SIMULATED DATA.",
+                e,
+            )
 
-        store_ds18b20_reading(celsius=c, fahrenheit=f, recorded_at=recorded_at)
+        store_ds18b20_reading(
+            celsius=c,
+            fahrenheit=f,
+            is_simulated=is_simulated,
+            recorded_at=recorded_at,
+        )
 
         if producer is not None:
             producer.send(
@@ -126,6 +152,7 @@ def run_poll_loop(
                     "recorded_at": recorded_at.isoformat(),
                     "celsius": c,
                     "fahrenheit": f,
+                    "is_simulated": is_simulated,
                 },
             )
 
@@ -133,4 +160,5 @@ def run_poll_loop(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     run_poll_loop()

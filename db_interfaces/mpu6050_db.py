@@ -54,6 +54,10 @@ def ensure_mpu6050_table_exists(*, table_name: str = DEFAULT_TABLE_NAME) -> None
         with conn.cursor() as cur:
             cur.execute(ddl_table)
             cur.execute(ddl_index)
+
+            cur.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS is_simulated BOOLEAN NOT NULL DEFAULT FALSE;"
+            )
         conn.commit()
 
 
@@ -67,6 +71,7 @@ def store_mpu6050_reading(
     gyro_z_dps: float,
     temperature_c: float,
     temperature_f: float,
+    is_simulated: bool = False,
     recorded_at: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ) -> int:
@@ -80,9 +85,10 @@ def store_mpu6050_reading(
         recorded_at,
         accel_x_g, accel_y_g, accel_z_g,
         gyro_x_dps, gyro_y_dps, gyro_z_dps,
-        temperature_c, temperature_f
+        temperature_c, temperature_f,
+        is_simulated
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     RETURNING id;
     """
 
@@ -100,6 +106,7 @@ def store_mpu6050_reading(
                     float(gyro_z_dps),
                     float(temperature_c),
                     float(temperature_f),
+                    bool(is_simulated),
                 ),
             )
             new_id = cur.fetchone()[0]
@@ -120,7 +127,8 @@ def fetch_recent_mpu6050(
         recorded_at,
         accel_x_g, accel_y_g, accel_z_g,
         gyro_x_dps, gyro_y_dps, gyro_z_dps,
-        temperature_c, temperature_f
+        temperature_c, temperature_f,
+        is_simulated
     FROM {table_name}
     ORDER BY recorded_at DESC
     LIMIT %s;
@@ -142,6 +150,7 @@ def fetch_recent_mpu6050(
             "gyro_z_dps": r[6],
             "temperature_c": r[7],
             "temperature_f": r[8],
+            "is_simulated": r[9],
         }
         for r in rows
     ]

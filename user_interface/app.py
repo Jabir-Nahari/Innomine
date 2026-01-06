@@ -55,6 +55,16 @@ def _prepare(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _show_simulated_banner(df: pd.DataFrame) -> None:
+    if df.empty or "is_simulated" not in df.columns:
+        return
+    simulated_count = int(df["is_simulated"].fillna(False).sum())
+    if simulated_count > 0:
+        st.warning(
+            f"Some readings are SIMULATED (device missing or read failure). Rows simulated: {simulated_count}."
+        )
+
+
 def show_scd40():
     rows = fetch_recent_scd40(limit=limit)
     df = pd.DataFrame(rows)
@@ -63,6 +73,7 @@ def show_scd40():
         return
 
     df = _prepare(df)
+    _show_simulated_banner(df)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -85,6 +96,7 @@ def show_ds18b20():
 
     df = df.rename(columns={"celsius": "temperature_c", "fahrenheit": "temperature_f"})
     df = _prepare(df)
+    _show_simulated_banner(df)
 
     unit = st.selectbox("Temperature unit", ["temperature_c", "temperature_f"], index=0)
     _line_chart(df, "recorded_at", unit, f"DS18B20 Temperature ({unit})")
@@ -101,6 +113,7 @@ def show_mpu6050():
         return
 
     df = _prepare(df)
+    _show_simulated_banner(df)
 
     col1, col2 = st.columns(2)
     with col1:

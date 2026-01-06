@@ -14,19 +14,17 @@ Env vars (optional):
 
 from __future__ import annotations
 
+import logging
 import json
+import math
 import os
 import time
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
-try:  # optional dependencies (I2C driver stack)
-    import board  # type: ignore
-    import busio  # type: ignore
+try:  # optional dependency
     import adafruit_scd4x  # type: ignore
 except Exception:  # pragma: no cover
-    board = None  # type: ignore
-    busio = None  # type: ignore
     adafruit_scd4x = None  # type: ignore
 
 try:  # optional dependency
@@ -35,6 +33,10 @@ except Exception:  # pragma: no cover
     KafkaProducer = None  # type: ignore
 
 from db_interfaces.scd40_db import store_scd40_reading
+from controllers.i2c_utils import get_i2c, is_address_present, normalize_i2c_address
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -47,12 +49,18 @@ def _c_to_f(celsius: float) -> float:
 
 def _get_scd40():
     """Return an initialized SCD4x instance (adafruit driver)."""
-    if board is None or busio is None or adafruit_scd4x is None:  # pragma: no cover
+    if adafruit_scd4x is None:  # pragma: no cover
         raise RuntimeError(
             "SCD40 driver not available. Install adafruit-circuitpython-scd4x and dependencies."
         )
 
-    i2c = busio.I2C(board.SCL, board.SDA)
+    i2c = get_i2c()
+    addr = normalize_i2c_address(os.getenv("SCD40_I2C_ADDRESS", "0x62"), 0x62)
+    if not is_address_present(addr, i2c=i2c):
+        raise RuntimeError(
+            f"SCD40 not detected on I2C (expected address 0x{addr:02x})."
+        )
+
     scd4x = adafruit_scd4x.SCD4X(i2c)
     scd4x.start_periodic_measurement()
     return scd4x
@@ -71,6 +79,15 @@ def read_scd40(scd4x=None) -> Tuple[float, float, float, float]:
     temp_c = float(scd4x.temperature)
     hum = float(scd4x.relative_humidity)
     return co2, temp_c, _c_to_f(temp_c), hum
+
+
+def _simulate_scd40() -> Tuple[float, float, float, float]:
+    t = time.time()
+    # CO2 baseline with a smooth wave (clearly simulation when logged)
+    co2 = 600.0 + 150.0 * math.sin(t / 20.0)
+    temp_c = 23.0 + 1.0 * math.sin(t / 45.0)
+    hum = 45.0 + 5.0 * math.sin(t / 30.0)
+    return float(co2), float(temp_c), _c_to_f(float(temp_c)), float(hum)
 
 
 def _get_kafka_producer():
@@ -101,18 +118,33 @@ def run_poll_loop(
     )
     topic = kafka_topic or os.getenv("SCD40_KAFKA_TOPIC", "scd40.readings")
 
-    scd4x = _get_scd40()
+    scd4x = None
+    is_simulated = False
+    try:
+        scd4x = _get_scd40()
+    except Exception as e:
+        is_simulated = True
+        logger.warning("SCD40 init failed (%s). USING SIMULATED DATA.", e)
     producer = _get_kafka_producer()
 
     while True:
         recorded_at = _utc_now()
-        co2, temp_c, temp_f, hum = read_scd40(scd4x)
+        if is_simulated:
+            co2, temp_c, temp_f, hum = _simulate_scd40()
+        else:
+            try:
+                co2, temp_c, temp_f, hum = read_scd40(scd4x)
+            except Exception as e:
+                is_simulated = True
+                logger.warning("SCD40 read failed (%s). SWITCHING TO SIMULATED DATA.", e)
+                co2, temp_c, temp_f, hum = _simulate_scd40()
 
         store_scd40_reading(
             co2_ppm=co2,
             temperature_c=temp_c,
             temperature_f=temp_f,
             humidity_rh=hum,
+            is_simulated=is_simulated,
             recorded_at=recorded_at,
         )
 
@@ -126,6 +158,7 @@ def run_poll_loop(
                     "temperature_c": temp_c,
                     "temperature_f": temp_f,
                     "humidity_rh": hum,
+                    "is_simulated": is_simulated,
                 },
             )
 
@@ -133,4 +166,5 @@ def run_poll_loop(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     run_poll_loop()
