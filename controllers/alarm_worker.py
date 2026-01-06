@@ -46,9 +46,11 @@ except Exception:  # pragma: no cover
 
 try:  # optional dependency
     from kafka import KafkaConsumer, KafkaProducer  # type: ignore
+    from kafka.errors import NoBrokersAvailable  # type: ignore
 except Exception:  # pragma: no cover
     KafkaConsumer = None  # type: ignore
     KafkaProducer = None  # type: ignore
+    NoBrokersAvailable = None  # type: ignore
 
 from db_interfaces.alarm_db import store_alarm_event
 
@@ -269,22 +271,54 @@ def evaluate_and_alarm(
 
 def run() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
+    # kafka-python can be extremely chatty at INFO when brokers are down.
+    logging.getLogger("kafka").setLevel(logging.WARNING)
+
     thresholds = _get_thresholds()
     buzzer = _get_buzzer()
-    consumer, producer, alarm_topic = _get_kafka()
 
-    for msg in consumer:
-        payload = msg.value
-        if not isinstance(payload, dict):
-            continue
+    backoff_s = 1.0
+    max_backoff_s = float(os.getenv("KAFKA_RETRY_MAX_S", "30"))
 
-        evaluate_and_alarm(
-            payload=payload,
-            thresholds=thresholds,
-            buzzer=buzzer,
-            kafka_producer=producer,
-            alarm_topic=alarm_topic,
-        )
+    while True:
+        try:
+            consumer, producer, alarm_topic = _get_kafka()
+            logger.info("Alarm worker connected to Kafka; consuming events.")
+            backoff_s = 1.0
+
+            for msg in consumer:
+                payload = msg.value
+                if not isinstance(payload, dict):
+                    continue
+
+                evaluate_and_alarm(
+                    payload=payload,
+                    thresholds=thresholds,
+                    buzzer=buzzer,
+                    kafka_producer=producer,
+                    alarm_topic=alarm_topic,
+                )
+
+        except Exception as e:
+            # If Kafka isn't running, don't crash the whole system.
+            is_no_brokers = (
+                NoBrokersAvailable is not None and isinstance(e, NoBrokersAvailable)
+            )
+            if is_no_brokers:
+                logger.warning(
+                    "Kafka broker not available. Alarm worker is idle (SIMULATED) and will retry in %.1fs.",
+                    backoff_s,
+                )
+            else:
+                logger.warning(
+                    "Alarm worker Kafka error (%s). Will retry in %.1fs.",
+                    e,
+                    backoff_s,
+                )
+
+            time.sleep(backoff_s)
+            backoff_s = min(max_backoff_s, backoff_s * 2.0)
 
 
 if __name__ == "__main__":
