@@ -1,0 +1,22 @@
+# Core DB
+psycopg2-binary>=2.9
+
+# Kafka
+kafka-python>=2.0
+
+# UI
+streamlit>=1.30
+altair>=5.0
+pandas>=2.0
+
+# Hardware (install on Raspberry Pi where sensors are connected)
+# DS18B20
+w1thermsensor>=2.3
+
+# I2C / CircuitPython drivers
+adafruit-blinka>=8.0
+adafruit-circuitpython-scd4x>=1.4
+adafruit-circuitpython-mpu6050>=1.2
+
+# Buzzer
+gpiozero>=2.0
