@@ -81,6 +81,7 @@ async def _terminate_process(proc: asyncio.subprocess.Process, timeout_s: float 
 async def main() -> int:
     # Allow disabling UI if you want to run headless on the Pi.
     run_ui = os.getenv("RUN_STREAMLIT", "true").lower() in {"1", "true", "yes"}
+    run_alarm = os.getenv("RUN_ALARM_WORKER", "true").lower() in {"1", "true", "yes"}
 
     # Preflight: ensure Postgres is reachable *and* credentials work.
     pg_host = os.getenv("PGHOST", "localhost")
@@ -130,8 +131,26 @@ async def main() -> int:
         ("ds18b20", [sys.executable, "-m", "controllers.ds18b20_controller"]),
         ("scd40", [sys.executable, "-m", "controllers.scd40_controller"]),
         ("mpu6050", [sys.executable, "-m", "controllers.mpu6050_controller"]),
-        ("alarm", [sys.executable, "-m", "controllers.alarm_worker"]),
     ]
+
+    # Alarm worker requires kafka-python. If kafka import is broken (e.g., SyntaxError from old package),
+    # skip it by default so the rest of the stack can run.
+    if run_alarm:
+        kafka_ok = True
+        try:
+            import kafka  # type: ignore
+
+            _ = kafka
+        except Exception as e:
+            kafka_ok = False
+            print(
+                "Alarm worker disabled: Kafka client import failed in this Python env.\n"
+                "Fix by reinstalling kafka-python (see requirements.txt) or set RUN_ALARM_WORKER=false.\n"
+                f"Import error: {e!r}"
+            )
+
+        if kafka_ok:
+            commands.append(("alarm", [sys.executable, "-m", "controllers.alarm_worker"]))
 
     if run_ui:
         commands.append(("ui", [sys.executable, "-m", "streamlit", "run", "user_interface/app.py"]))

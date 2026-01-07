@@ -2,7 +2,9 @@
 psycopg2-binary>=2.9
 
 # Kafka
-kafka-python>=2.0
+# kafka-python versions that contain `self.async` will crash on Python 3.7+ with a SyntaxError.
+# Pin to a known modern version.
+kafka-python==2.0.2
 
 # UI
 streamlit>=1.30

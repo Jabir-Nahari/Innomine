@@ -47,12 +47,17 @@ except Exception:  # pragma: no cover
 
 try:  # optional dependency
     from kafka import KafkaConsumer, KafkaProducer  # type: ignore
+    from kafka.admin import KafkaAdminClient, NewTopic  # type: ignore
     from kafka.errors import NoBrokersAvailable  # type: ignore
+    from kafka.errors import TopicAlreadyExistsError  # type: ignore
     _KAFKA_IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     KafkaConsumer = None  # type: ignore
     KafkaProducer = None  # type: ignore
+    KafkaAdminClient = None  # type: ignore
+    NewTopic = None  # type: ignore
     NoBrokersAvailable = None  # type: ignore
+    TopicAlreadyExistsError = None  # type: ignore
     _KAFKA_IMPORT_ERROR = e
 
 from db_interfaces.alarm_db import store_alarm_event
@@ -148,6 +153,34 @@ def _get_kafka():
 
     group_id = os.getenv("ALARM_CONSUMER_GROUP", "innomine-alarm")
 
+    # Ensure topics exist to avoid noisy "Topic not found in cluster metadata" errors.
+    # Controllers may have Kafka disabled, so producers won't auto-create topics.
+    publish_topic = os.getenv("ALARM_PUBLISH_TOPIC", "alarms.events")
+    all_topics = sorted({*consume_topics, publish_topic})
+    if KafkaAdminClient is not None and NewTopic is not None:
+        try:
+            admin = KafkaAdminClient(bootstrap_servers=servers, client_id="innomine-admin")
+            try:
+                futures = admin.create_topics(
+                    new_topics=[NewTopic(name=t, num_partitions=1, replication_factor=1) for t in all_topics],
+                    validate_only=False,
+                )
+                for topic_name, fut in futures.items():
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        if TopicAlreadyExistsError is not None and isinstance(e, TopicAlreadyExistsError):
+                            continue
+                        # Best-effort: topics might already exist or broker might not support create yet.
+                        logger.warning("Kafka topic ensure failed for %s (%s)", topic_name, e)
+            finally:
+                try:
+                    admin.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning("Kafka admin topic ensure failed (%s)", e)
+
     consumer = KafkaConsumer(
         *consume_topics,
         bootstrap_servers=servers,
@@ -156,8 +189,6 @@ def _get_kafka():
         enable_auto_commit=True,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
     )
-
-    publish_topic = os.getenv("ALARM_PUBLISH_TOPIC", "alarms.events")
 
     producer = KafkaProducer(
         bootstrap_servers=servers,
@@ -281,6 +312,8 @@ def run() -> None:
 
     # kafka-python can be extremely chatty at INFO when brokers are down.
     logging.getLogger("kafka").setLevel(logging.WARNING)
+    logging.getLogger("kafka.cluster").setLevel(logging.WARNING)
+    logging.getLogger("kafka.coordinator").setLevel(logging.WARNING)
 
     thresholds = _get_thresholds()
     buzzer = _get_buzzer()
