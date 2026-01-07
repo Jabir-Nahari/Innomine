@@ -26,7 +26,26 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import socket
 from typing import List, Sequence, Tuple
+
+
+async def _wait_for_tcp(host: str, port: int, timeout_s: float) -> bool:
+    """Wait until a TCP endpoint is reachable."""
+    deadline = asyncio.get_event_loop().time() + timeout_s
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            reader, writer = await asyncio.open_connection(host=host, port=port)
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            _ = reader
+            return True
+        except Exception:
+            await asyncio.sleep(0.5)
+    return False
 
 
 async def _start_process(cmd: Sequence[str]) -> asyncio.subprocess.Process:
@@ -62,6 +81,21 @@ async def _terminate_process(proc: asyncio.subprocess.Process, timeout_s: float 
 async def main() -> int:
     # Allow disabling UI if you want to run headless on the Pi.
     run_ui = os.getenv("RUN_STREAMLIT", "true").lower() in {"1", "true", "yes"}
+
+    # Preflight: ensure Postgres is reachable before starting writers.
+    pg_host = os.getenv("PGHOST", "localhost")
+    pg_port = int(os.getenv("PGPORT", "5432"))
+    pg_wait_s = float(os.getenv("PG_WAIT_TIMEOUT_S", "30"))
+
+    ok = await _wait_for_tcp(pg_host, pg_port, pg_wait_s)
+    if not ok:
+        raise SystemExit(
+            "Postgres is not reachable at "
+            f"{pg_host}:{pg_port}.\n"
+            "Start it with: `sudo docker compose up -d postgres`\n"
+            "And verify with: `sudo docker compose ps`\n"
+            "(Set PGHOST/PGPORT if Postgres is elsewhere.)"
+        )
 
     commands: List[Tuple[str, Sequence[str]]] = [
         ("ds18b20", ["python", "-m", "controllers.ds18b20_controller"]),
