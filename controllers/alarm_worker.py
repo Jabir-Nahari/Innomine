@@ -35,6 +35,7 @@ import logging
 import json
 import os
 import time
+import traceback
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -47,10 +48,12 @@ except Exception:  # pragma: no cover
 try:  # optional dependency
     from kafka import KafkaConsumer, KafkaProducer  # type: ignore
     from kafka.errors import NoBrokersAvailable  # type: ignore
-except Exception:  # pragma: no cover
+    _KAFKA_IMPORT_ERROR = None
+except Exception as e:  # pragma: no cover
     KafkaConsumer = None  # type: ignore
     KafkaProducer = None  # type: ignore
     NoBrokersAvailable = None  # type: ignore
+    _KAFKA_IMPORT_ERROR = e
 
 from db_interfaces.alarm_db import store_alarm_event
 
@@ -129,7 +132,11 @@ def _beep(buzzer) -> None:
 
 def _get_kafka():
     if KafkaConsumer is None or KafkaProducer is None:  # pragma: no cover
-        raise RuntimeError("Install kafka-python to run alarm worker.")
+        raise RuntimeError(
+            "Kafka client library not available (import failed). "
+            "This often means the alarm worker is running under a different Python env. "
+            f"Original import error: {_KAFKA_IMPORT_ERROR!r}"
+        )
 
     servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
@@ -311,6 +318,8 @@ def run() -> None:
                     backoff_s,
                 )
             else:
+                # Print full traceback for non-broker errors (env mismatch, auth, etc.)
+                traceback.print_exc()
                 logger.warning(
                     "Alarm worker Kafka error (%s). Will retry in %.1fs.",
                     e,

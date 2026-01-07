@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import socket
+import sys
 from typing import List, Sequence, Tuple
 
 
@@ -82,7 +82,7 @@ async def main() -> int:
     # Allow disabling UI if you want to run headless on the Pi.
     run_ui = os.getenv("RUN_STREAMLIT", "true").lower() in {"1", "true", "yes"}
 
-    # Preflight: ensure Postgres is reachable before starting writers.
+    # Preflight: ensure Postgres is reachable *and* credentials work.
     pg_host = os.getenv("PGHOST", "localhost")
     pg_port = int(os.getenv("PGPORT", "5432"))
     pg_wait_s = float(os.getenv("PG_WAIT_TIMEOUT_S", "30"))
@@ -97,15 +97,44 @@ async def main() -> int:
             "(Set PGHOST/PGPORT if Postgres is elsewhere.)"
         )
 
+    # If psycopg2 is available, validate that we can authenticate before spawning writers.
+    # This avoids controller subprocesses crashing with long psycopg2 tracebacks.
+    try:
+        from db_interfaces.db import get_connection  # local import to keep startup flexible
+
+        dsn = os.getenv("DATABASE_URL")
+        pg_db = os.getenv("PGDATABASE")
+        pg_user = os.getenv("PGUSER")
+        pg_password_set = "PGPASSWORD" in os.environ
+
+        try:
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+        except Exception as e:
+            raise SystemExit(
+                "Postgres connection/auth failed.\n"
+                f"- DATABASE_URL set: {bool(dsn)}\n"
+                f"- PGHOST={pg_host} PGPORT={pg_port} PGDATABASE={pg_db!r} PGUSER={pg_user!r} PGPASSWORD set={pg_password_set}\n"
+                "If you're using the provided docker-compose defaults, use:\n"
+                "  export PGHOST=localhost PGPORT=5432 PGDATABASE=innomine PGUSER=innomine PGPASSWORD=innomine\n"
+                "Or set DATABASE_URL like:\n"
+                "  export DATABASE_URL='postgres://innomine:innomine@localhost:5432/innomine'\n"
+                f"Original error: {e}"
+            )
+    except ImportError:
+        # psycopg2 may not be installed in some environments; TCP check above still helps.
+        pass
+
     commands: List[Tuple[str, Sequence[str]]] = [
-        ("ds18b20", ["python", "-m", "controllers.ds18b20_controller"]),
-        ("scd40", ["python", "-m", "controllers.scd40_controller"]),
-        ("mpu6050", ["python", "-m", "controllers.mpu6050_controller"]),
-        ("alarm", ["python", "-m", "controllers.alarm_worker"]),
+        ("ds18b20", [sys.executable, "-m", "controllers.ds18b20_controller"]),
+        ("scd40", [sys.executable, "-m", "controllers.scd40_controller"]),
+        ("mpu6050", [sys.executable, "-m", "controllers.mpu6050_controller"]),
+        ("alarm", [sys.executable, "-m", "controllers.alarm_worker"]),
     ]
 
     if run_ui:
-        commands.append(("ui", ["streamlit", "run", "user_interface/app.py"]))
+        commands.append(("ui", [sys.executable, "-m", "streamlit", "run", "user_interface/app.py"]))
 
     procs: List[asyncio.subprocess.Process] = []
     try:
