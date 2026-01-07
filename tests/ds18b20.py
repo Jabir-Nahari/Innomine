@@ -1,5 +1,12 @@
 import os
+import sys
 import time
+from pathlib import Path
+
+# Allow running via `python tests/ds18b20.py` from any cwd.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from controllers import ds18b20_controller
 from db_interfaces.ds18b20_db import store_ds18b20_reading
