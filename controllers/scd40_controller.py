@@ -19,6 +19,7 @@ import json
 import math
 import os
 import time
+import traceback
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
@@ -33,7 +34,7 @@ except Exception:  # pragma: no cover
     KafkaProducer = None  # type: ignore
 
 from db_interfaces.scd40_db import store_scd40_reading
-from controllers.i2c_utils import get_i2c, is_address_present, normalize_i2c_address
+from controllers.i2c_utils import get_i2c, normalize_i2c_address
 
 
 logger = logging.getLogger(__name__)
@@ -56,12 +57,19 @@ def _get_scd40():
 
     i2c = get_i2c()
     addr = normalize_i2c_address(os.getenv("SCD40_I2C_ADDRESS", "0x62"), 0x62)
-    if not is_address_present(addr, i2c=i2c):
-        raise RuntimeError(
-            f"SCD40 not detected on I2C (expected address 0x{addr:02x})."
-        )
+    # Bypass scan-based detection gatekeeper:
+    # `i2cdetect` can show a device even when busio scan fails (timing/permissions/etc).
+    # If the device truly isn't present, driver init will fail with a concrete exception.
+    try:
+        scd4x = adafruit_scd4x.SCD4X(i2c, address=addr)
+    except TypeError:  # older driver versions may not accept `address=`
+        scd4x = adafruit_scd4x.SCD4X(i2c)
 
-    scd4x = adafruit_scd4x.SCD4X(i2c)
+    # If the sensor was left running from a previous crash, starting again can raise.
+    try:
+        scd4x.stop_periodic_measurement()
+    except Exception:
+        pass
     scd4x.start_periodic_measurement()
     return scd4x
 
@@ -124,6 +132,7 @@ def run_poll_loop(
         scd4x = _get_scd40()
     except Exception as e:
         is_simulated = True
+        traceback.print_exc()
         logger.warning("SCD40 init failed (%s). USING SIMULATED DATA.", e)
     producer = _get_kafka_producer()
 
@@ -136,6 +145,7 @@ def run_poll_loop(
                 co2, temp_c, temp_f, hum = read_scd40(scd4x)
             except Exception as e:
                 is_simulated = True
+                traceback.print_exc()
                 logger.warning("SCD40 read failed (%s). SWITCHING TO SIMULATED DATA.", e)
                 co2, temp_c, temp_f, hum = _simulate_scd40()
 

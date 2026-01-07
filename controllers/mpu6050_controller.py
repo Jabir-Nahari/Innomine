@@ -19,6 +19,7 @@ import json
 import math
 import os
 import time
+import traceback
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
@@ -33,7 +34,7 @@ except Exception:  # pragma: no cover
     KafkaProducer = None  # type: ignore
 
 from db_interfaces.mpu6050_db import store_mpu6050_reading
-from controllers.i2c_utils import get_i2c, is_address_present, normalize_i2c_address
+from controllers.i2c_utils import get_i2c, normalize_i2c_address
 
 
 logger = logging.getLogger(__name__)
@@ -56,12 +57,18 @@ def _get_mpu6050():
     i2c = get_i2c()
     # Most common addresses are 0x68 (AD0 low) or 0x69 (AD0 high)
     addr = normalize_i2c_address(os.getenv("MPU6050_I2C_ADDRESS", "0x68"), 0x68)
-    if not is_address_present(addr, i2c=i2c):
-        raise RuntimeError(
-            f"MPU6050 not detected on I2C (expected address 0x{addr:02x})."
-        )
 
-    return adafruit_mpu6050.MPU6050(i2c)
+    # Bypass scan-based detection gatekeeper:
+    # `i2cdetect` can show a device even when busio scan fails (timing/permissions/etc).
+    # If the device truly isn't present, driver init or first read will fail with a concrete exception.
+    try:
+        mpu = adafruit_mpu6050.MPU6050(i2c, address=addr)
+    except TypeError:  # older driver versions may not accept `address=`
+        mpu = adafruit_mpu6050.MPU6050(i2c)
+
+    # Force one I2C transaction so init failures surface here (not later in the loop).
+    _ = mpu.temperature
+    return mpu
 
 
 def read_mpu6050(
@@ -144,6 +151,7 @@ def run_poll_loop(
         mpu = _get_mpu6050()
     except Exception as e:
         is_simulated = True
+        traceback.print_exc()
         logger.warning("MPU6050 init failed (%s). USING SIMULATED DATA.", e)
     producer = _get_kafka_producer()
 
@@ -156,6 +164,7 @@ def run_poll_loop(
                 ax, ay, az, gx, gy, gz, temp_c, temp_f = read_mpu6050(mpu)
             except Exception as e:
                 is_simulated = True
+                traceback.print_exc()
                 logger.warning(
                     "MPU6050 read failed (%s). SWITCHING TO SIMULATED DATA.", e
                 )
