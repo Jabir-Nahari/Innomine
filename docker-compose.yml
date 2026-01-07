@@ -1,6 +1,6 @@
 services:
   kafka:
-    image: bitnami/kafka:3.6
+    image: bitnami/kafka:3.6.1
     container_name: innomine-kafka
     ports:
       - "9092:9092" # host access: localhost:9092
