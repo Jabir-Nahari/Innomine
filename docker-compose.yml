@@ -1,6 +1,6 @@
 services:
   kafka:
-    image: bitnami/kafka:3.6.1
+    image: bitnami/kafka:latest
     container_name: innomine-kafka
     ports:
       - "9092:9092" # host access: localhost:9092
@@ -32,7 +32,7 @@ services:
       - kafka_data:/bitnami/kafka
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine3.23
     container_name: innomine-postgres
     ports:
       - "5432:5432"
