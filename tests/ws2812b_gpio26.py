@@ -43,17 +43,15 @@ def _try_neopixel_class(num_pixels: int, brightness: float, order: str):
     import board
     import neopixel
 
-    order_map = {
-        "RGB": neopixel.RGB,
-        "RBG": neopixel.RBG,
-        "GRB": neopixel.GRB,
-        "GBR": neopixel.GBR,
-        "BRG": neopixel.BRG,
-        "BGR": neopixel.BGR,
-    }
-    pixel_order = order_map.get(order)
-    if pixel_order is None:
-        raise ValueError(f"Invalid LED_ORDER={order!r}; expected one of {sorted(order_map)}")
+    # Per Adafruit CircuitPython NeoPixel docs, the exported order constants are:
+    # `RGB`, `GRB`, `RGBW`, `GRBW` (not arbitrary permutations like "RBG").
+    supported_orders = ["RGB", "GRB", "RGBW", "GRBW"]
+    pixel_order = getattr(neopixel, order, None)
+    if pixel_order is None or order not in supported_orders:
+        raise ValueError(
+            f"LED_ORDER={order!r} is not supported by neopixel.NeoPixel on this platform; "
+            f"use one of {supported_orders} or rely on the bit-banged fallback."
+        )
 
     # NOTE: On Raspberry Pi, the backend may require specific pins (commonly GPIO18/12/13/19).
     # You requested GPIO26; if the backend rejects it, we'll fall back to bit-banged neopixel_write.
