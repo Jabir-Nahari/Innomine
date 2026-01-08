@@ -9,15 +9,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from controllers import mpu6050_controller
-from db_interfaces.mpu6050_db import store_mpu6050_reading
-
-
-def _db_enabled() -> bool:
-    return os.getenv("ENABLE_DB", "true").lower() in {"1", "true", "yes"}
 
 
 print("MPU6050 controller test starting...")
-print("- ENABLE_DB=", os.getenv("ENABLE_DB", "true"))
 
 try:
     iterations = int(os.getenv("ITERATIONS", "50"))
@@ -62,23 +56,6 @@ for i in range(iterations):
         f"gyro_dps=({gyro_x_dps:+.2f},{gyro_y_dps:+.2f},{gyro_z_dps:+.2f}) "
         f"temp={tc:.2f}°C/{tf:.2f}°F"
     )
-
-    if _db_enabled():
-        try:
-            new_id = store_mpu6050_reading(
-                accel_x_g=accel_x_g,
-                accel_y_g=accel_y_g,
-                accel_z_g=accel_z_g,
-                gyro_x_dps=gyro_x_dps,
-                gyro_y_dps=gyro_y_dps,
-                gyro_z_dps=gyro_z_dps,
-                temperature_c=tc,
-                temperature_f=tf,
-                is_simulated=is_simulated,
-            )
-            print(f"  -> stored row id={new_id} (simulated={is_simulated})")
-        except Exception as e:
-            print(f"  -> DB store failed: {e}")
 
     time.sleep(float(os.getenv("SLEEP_S", "0.2")))
 

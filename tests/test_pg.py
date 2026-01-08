@@ -1,15 +1,4 @@
-import os
-import psycopg2
-
-try:
-    conn = psycopg2.connect(
-        host=os.getenv("PGHOST", "localhost"),
-        port=int(os.getenv("PGPORT", "5432")),
-        dbname=os.getenv("PGDATABASE"),
-        user=os.getenv("PGUSER"),
-        password=os.getenv("PGPASSWORD"),
-    )
-    print("✅ Connected to PostgreSQL!")
-    conn.close()
-except Exception as e:
-    print("❌ Connection failed:", e)
+raise SystemExit(
+    "This helper was moved out of tests/ to keep tests hardware-only (no DB).\n"
+    "Use tools/test_pg.py instead."
+)

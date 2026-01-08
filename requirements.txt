@@ -20,5 +20,8 @@ adafruit-blinka>=8.0
 adafruit-circuitpython-scd4x>=1.4
 adafruit-circuitpython-mpu6050>=1.2
 
+# WS2812B / NeoPixel addressable LEDs
+adafruit-circuitpython-neopixel>=6.3
+
 # Buzzer
 gpiozero>=2.0
