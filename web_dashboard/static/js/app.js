@@ -202,9 +202,6 @@ function renderAlarms(alarms) {
 
 function renderMap(miners) {
     if (!els.mapContainer) return;
-    // Simple visualization: 4 Sections
-    // Clear existing dots first (simple approach) or update them
-    // For robustness, we'll just rebuild for now
     
     // Ensure background grid exists
     if (!els.mapContainer.querySelector('.map-grid-bg')) {
@@ -212,25 +209,24 @@ function renderMap(miners) {
     }
     
     // Remove old dots
-    const oldDots = els.mapContainer.querySelectorAll('.worker-dot');
+    const oldDots = els.mapContainer.querySelectorAll('.map-dot');
     oldDots.forEach(d => d.remove());
     
     miners.forEach(m => {
         const dot = document.createElement('div');
-        dot.className = `worker-dot status-${m.status}`;
+        dot.className = `map-dot status-${m.status}`;
         dot.title = `${m.name}: ${m.location}`;
         
-        // Randomize position slightly based on Miner ID/Time to simulate movement
-        // Or strictly map location strings
+        // Randomize position based on Miner ID
         let top=50, left=50;
         if (m.location.includes("Section A")) { top = 20; left = 20; }
         else if (m.location.includes("Section B")) { top = 20; left = 80; }
         else if (m.location.includes("Section C")) { top = 80; left = 20; }
         else { top = 80; left = 80; }
         
-        // Add jitter
-        top += (m.id * 5) % 10;
-        left += (m.id * 7) % 10;
+        // Jitter
+        top += (m.id * 5) % 15;
+        left += (m.id * 7) % 15;
         
         dot.style.top = top + '%';
         dot.style.left = left + '%';
@@ -256,6 +252,10 @@ async function loadConfig() {
             els.buzzBeeps.value = config.beeps;
             els.beepVal.textContent = config.beeps;
         }
+        if (els.alarmPoll) {
+            els.alarmPoll.value = config.poll_interval_s;
+            els.pollVal.textContent = config.poll_interval_s;
+        }
         if (els.ledToggle) els.ledToggle.checked = config.led_enabled;
     } catch (err) {
         console.error("Config load error:", err);
@@ -266,6 +266,7 @@ async function saveConfig() {
     const config = {
         duration_s: parseFloat(els.buzzDur.value),
         beeps: parseInt(els.buzzBeeps.value),
+        poll_interval_s: parseFloat(els.alarmPoll.value),
         led_enabled: els.ledToggle.checked
     };
     

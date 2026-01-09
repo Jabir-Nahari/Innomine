@@ -29,8 +29,9 @@ class AlarmConfig:
     """Alarm configuration that can be modified from UI."""
     buzzer_duration_s: float = DEFAULT_BUZZER_DURATION_S
     buzzer_beeps: int = DEFAULT_BUZZER_BEEPS
-    pwm_duty_cycle: float = DEFAULT_PWM_DUTY_CYCLE  # For PWM buzzers (0.0-1.0)
+    pwm_duty_cycle: float = DEFAULT_PWM_DUTY_CYCLE
     led_enabled: bool = DEFAULT_LED_ENABLED
+    alarm_poll_interval_s: float = 2.0  # Default 2.0s
     
     def to_dict(self) -> dict:
         return asdict(self)
@@ -42,6 +43,7 @@ class AlarmConfig:
             buzzer_beeps=int(d.get("buzzer_beeps", DEFAULT_BUZZER_BEEPS)),
             pwm_duty_cycle=float(d.get("pwm_duty_cycle", DEFAULT_PWM_DUTY_CYCLE)),
             led_enabled=bool(d.get("led_enabled", DEFAULT_LED_ENABLED)),
+            alarm_poll_interval_s=float(d.get("alarm_poll_interval_s", 2.0)),
         )
 
 

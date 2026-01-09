@@ -434,6 +434,14 @@ def run_db_polling_mode(thresholds: Thresholds, buzzer, led) -> None:
         except Exception as e:
             logger.error("Error polling database for alarms: %s", e)
             traceback.print_exc()
+        
+        # Dynamic Config Reload
+        try:
+            from controllers.alarm_config import load_config
+            cfg = load_config()
+            poll_interval = cfg.alarm_poll_interval_s
+        except Exception:
+            pass  # Keep existing interval on error
 
         time.sleep(poll_interval)
 

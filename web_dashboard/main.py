@@ -98,10 +98,11 @@ class Alarm(BaseModel):
     message: str
     is_simulated: bool = False
 
-class BuzzerConfig(BaseModel):
+class SystemConfig(BaseModel):
     duration_s: float
     beeps: int
     led_enabled: bool
+    poll_interval_s: float
 
 # --- Data Simulation & Retrieval ---
 
@@ -341,20 +342,30 @@ async def get_history(miner_id: int):
     except Exception:
         return {"labels": [], "co2": [], "temp": []}
 
+class SystemConfig(BaseModel):
+    duration_s: float
+    beeps: int
+    led_enabled: bool
+    poll_interval_s: float
+
+# ...
+
 @app.get("/api/config")
 async def get_config():
     c = load_config()
     return {
         "duration_s": c.buzzer_duration_s,
         "beeps": c.buzzer_beeps,
-        "led_enabled": c.led_enabled
+        "led_enabled": c.led_enabled,
+        "poll_interval_s": c.alarm_poll_interval_s
     }
 
 @app.post("/api/config")
-async def set_config(config: BuzzerConfig):
+async def set_config(config: SystemConfig):
     c = load_config()
     c.buzzer_duration_s = config.duration_s
     c.buzzer_beeps = config.beeps
     c.led_enabled = config.led_enabled
+    c.alarm_poll_interval_s = config.poll_interval_s
     save_config(c)
     return {"status": "ok"}
