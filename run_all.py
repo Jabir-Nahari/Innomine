@@ -161,8 +161,11 @@ async def main() -> int:
 
     procs: List[asyncio.subprocess.Process] = []
     try:
-        for _, cmd in commands:
+        for name, cmd in commands:
+            print(f"Starting {name}...")
             procs.append(await _start_process(cmd))
+            # Stagger startup to prevent DB deadlocks on table creation
+            await asyncio.sleep(1.0)
 
         # If any process exits, shut everything down.
         waiters = [asyncio.create_task(p.wait()) for p in procs]

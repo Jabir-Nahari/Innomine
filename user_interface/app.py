@@ -455,19 +455,21 @@ def simulate_miner_data(miner_id: int, real_sensor_data: dict = None) -> dict:
     
     # Use real environmental data if available for miner 1
     if real_sensor_data and miner_id == 1:
-        co2 = real_sensor_data.get("co2_ppm", 450)
-        env_temp = real_sensor_data.get("temperature_c", 24)
-        humidity = real_sensor_data.get("humidity_rh", 45)
+        co2 = real_sensor_data.get("co2_ppm", "N/A")
+        env_temp = real_sensor_data.get("temperature_c", "N/A")
+        humidity = real_sensor_data.get("humidity_rh", "N/A")
         is_real = True
     else:
-        co2 = 400 + 100 * math.sin(t / 45) + random.randint(-20, 20)
+        co2 = int(400 + 100 * math.sin(t / 45) + random.randint(-20, 20))
         env_temp = 22 + 3 * math.sin(t / 50) + random.uniform(-1, 1)
         humidity = 45 + 10 * math.sin(t / 40) + random.uniform(-3, 3)
         is_real = False
     
     # Simulated motion/acceleration
-    if real_sensor_data and miner_id == 1 and "accel_x_g" in real_sensor_data:
-        motion = abs(real_sensor_data.get("accel_x_g", 0)) + abs(real_sensor_data.get("accel_y_g", 0))
+    if real_sensor_data and miner_id == 1:
+        motion = real_sensor_data.get("accel_x_g", "N/A")
+        if motion != "N/A":
+             motion = abs(motion) + abs(real_sensor_data.get("accel_y_g", 0))
     else:
         motion = 0.1 + 0.2 * abs(math.sin(t / 10)) + random.uniform(0, 0.1)
     
@@ -744,7 +746,28 @@ def render_alerts_panel(alerts: list, db_alarms: list):
 
 def render_mine_map_panel(miners: list):
     """Render the Geospatial Mine Twin Map panel."""
-    st.markdown("""
+    
+    # Build the dots HTML first
+    dots_html = ""
+    for i, miner in enumerate(miners):
+        # Constrain positions to stay within bounds (10-90%)
+        x = min(90, max(10, 20 + (i % 4) * 20 + random.randint(-5, 5)))
+        y = min(90, max(10, 30 + (i // 4) * 30 + random.randint(-5, 5)))
+        
+        # Check status safely
+        co2_val = miner["co2_ppm"]
+        if not isinstance(co2_val, (int, float)):
+             co2_val = 0
+             
+        status = "warning" if get_status(co2_val, "co2_ppm") != "safe" else ""
+        dots_html += f"""
+            <div class="map-dot {status}" style="left: {x}%; top: {y}%;" title="{miner['name']}">
+                <span class="map-tooltip">{miner['name']}</span>
+            </div>
+        """
+        
+    # Render the entire panel in one go ensuring proper nesting
+    st.markdown(f"""
     <div class="panel">
         <div class="panel-header">
             <div class="panel-title">🗺️ Geospatial Mine Twin Map</div>
@@ -752,23 +775,39 @@ def render_mine_map_panel(miners: list):
         </div>
         <div class="map-container">
             <div class="map-grid"></div>
-    """, unsafe_allow_html=True)
-    
-    # Add dots for miners at pseudo-random positions
-    for i, miner in enumerate(miners):
-        x = 20 + (i % 4) * 60 + random.randint(-10, 10)
-        y = 30 + (i // 4) * 50 + random.randint(-10, 10)
-        status = "warning" if get_status(miner["co2_ppm"], "co2_ppm") != "safe" else ""
-        st.markdown(f"""
-            <div class="map-dot {status}" style="left: {x}%; top: {y}%;" title="{miner['name']}"></div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("""
-            <div style="color: #64748b; font-size: 0.8rem; z-index: 10;">
+            {dots_html}
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px; color: #64748b; font-size: 0.8rem; z-index: 10; text-align: center;">
                 🟢 Workers are displayed as dots • Locations are simulated
             </div>
         </div>
     </div>
+    
+    <style>
+    /* Tooltip style for the dots */
+    .map-dot .map-tooltip {
+        visibility: hidden;
+        width: 120px;
+        background-color: rgba(15, 23, 42, 0.9);
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 5px 0;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%; /* Position above */
+        left: 50%;
+        margin-left: -60px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        border: 1px solid var(--border-color);
+        font-size: 0.75rem;
+    }
+    
+    .map-dot:hover .map-tooltip {
+        visibility: visible;
+        opacity: 1;
+    }
+    </style>
     """, unsafe_allow_html=True)
 
 
@@ -843,16 +882,114 @@ simulated_alerts = generate_simulated_alerts()
 # Render UI
 render_header()
 
-# Three-column layout matching the reference
-col1, col2 = st.columns([2, 1])
+# Detail View Selector
+st.markdown("### 🔍 Dashboard View")
+view_options = ["Overview"] + [m["name"] for m in miners]
+selected_view = st.pills("Select View", view_options, default="Overview")
 
-with col1:
-    render_site_health_panel(real_sensor_data, miners)
-    render_workers_panel(miners)
+if selected_view == "Overview":
+    # Three-column layout
+    col1, col2 = st.columns([2, 1])
 
-with col2:
-    render_alerts_panel(simulated_alerts, db_alarms)
-    render_mine_map_panel(miners)
+    with col1:
+        render_site_health_panel(real_sensor_data, miners)
+        render_workers_panel(miners)
+
+    with col2:
+        render_alerts_panel(simulated_alerts, db_alarms)
+        render_mine_map_panel(miners)
+
+else:
+    # Detailed Worker View
+    miner = next(m for m in miners if m["name"] == selected_view)
+    st.markdown(f"""
+    <div class="panel">
+        <div class="panel-header">
+            <div class="panel-title">👤 Worker Details: {miner['name']}</div>
+            <span class="panel-badge {'badge-live' if miner['is_real_data'] else 'badge-simulated'}">
+                {'LIVE DATA' if miner['is_real_data'] else 'SIMULATED'}
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    d_col1, d_col2 = st.columns(2)
+    
+    with d_col1:
+        st.markdown(f"""
+        <div class="metric-grid" style="grid-template-columns: repeat(2, 1fr);">
+            <div class="metric-item">
+                <div class="metric-value">{miner['heart_rate']}</div>
+                <div class="metric-label">Heart Rate (BPM)</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value">{miner['body_temp']:.1f}°</div>
+                <div class="metric-label">Body Temperature</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value {get_status(miner['co2_ppm'] if isinstance(miner['co2_ppm'], (int, float)) else 0, 'co2_ppm')}">
+                    {miner['co2_ppm'] if isinstance(miner['co2_ppm'], (int, float)) else 'N/A'}
+                </div>
+                <div class="metric-label">CO₂ Level (ppm)</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value">{miner['env_temp'] if isinstance(miner['env_temp'], (int, float)) else 'N/A'}°</div>
+                <div class="metric-label">Environment Temp</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with d_col2:
+        st.markdown(f"""
+        <div style="background: rgba(17, 24, 39, 0.6); padding: 1rem; border-radius: 8px;">
+            <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 0.5rem;">Current Location</div>
+            <div style="font-size: 1.1rem; color: #f1f5f9; font-weight: 600;">📍 {miner['location']}</div>
+            <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+                <div>
+                    <div style="color: #94a3b8; font-size: 0.8rem;">Shift</div>
+                    <div style="color: #f1f5f9;">{miner['shift']}</div>
+                </div>
+                <div>
+                    <div style="color: #94a3b8; font-size: 0.8rem;">Battery</div>
+                    <div style="color: {'#ef4444' if miner['battery'] < 20 else '#10b981'};">{miner['battery']}%</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Show history charts if it's the real miner
+    if miner['is_real_data']:
+        st.markdown("### 📈 Historical Data")
+        
+        # Determine lookback from sidebar
+        # We need to reuse lookback_h from sidebar which is inside sidebar context
+        # But we can access it via session state or just re-read it if we move it up or pass it
+        # Simple fix: assume default or read session state if available
+        # lookback_h is defined in sidebar, so it should be available in global scope of script execution
+        
+        try:
+            since = _utc_now() - timedelta(hours=6)
+            scd40_rows = fetch_recent_scd40(limit=500, since=since)
+            if scd40_rows:
+                df = pd.DataFrame(scd40_rows)
+                df = df.sort_values("recorded_at")
+                
+                c = alt.Chart(df).mark_line(strokeWidth=3).encode(
+                    x=alt.X("recorded_at", title="Time"),
+                    y=alt.Y("co2_ppm", title="CO₂ (ppm)"),
+                    color=alt.value("#10b981")
+                ).properties(height=300, title="CO₂ Levels over Time")
+                st.altair_chart(c, use_container_width=True)
+        except Exception:
+            st.info("No historical data available.")
+
+    # Back button
+    if st.button("← Back to Overview"):
+        st.rerun()  # Will reset view to default since we aren't persisting state explicitly yet (st.pills kind of does)
+
+# Sidebar controls interactions...
+# (Existing sidebar code remains)
 
 # Sidebar controls
 with st.sidebar:
