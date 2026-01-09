@@ -59,10 +59,24 @@ async function init() {
     fetchAlarms();
     setInterval(fetchAlarms, 5000);
     
-    // Event Listeners
-    els.buzzDur.addEventListener('input', (e) => els.durVal.textContent = e.target.value);
-    els.buzzBeeps.addEventListener('input', (e) => els.beepVal.textContent = e.target.value);
-    els.saveBtn.addEventListener('click', saveConfig);
+    if (els.buzzDur) els.buzzDur.addEventListener('input', (e) => {
+         if(els.durVal) els.durVal.textContent = e.target.value;
+    });
+    if (els.buzzBeeps) els.buzzBeeps.addEventListener('input', (e) => {
+         if(els.beepVal) els.beepVal.textContent = e.target.value;
+    });
+    // FIXED: Ensure alarmPoll listener is correctly bound
+    if (els.alarmPoll) els.alarmPoll.addEventListener('input', (e) => {
+         console.log("Slider move:", e.target.value); // Debug
+         if(els.pollVal) els.pollVal.textContent = e.target.value;
+    }); 
+    if (els.saveBtn) els.saveBtn.addEventListener('click', () => {
+        saveConfig(); // Call the saveConfig function
+        // The following lines seem to be misplaced from the modal close logic,
+        // but are included as per the instruction's explicit content.
+        els.modal.classList.add('hidden');
+        currentMinerId = null;
+    });
     
     els.closeModal.addEventListener('click', () => {
         els.modal.classList.add('hidden');
@@ -217,19 +231,29 @@ function renderMap(miners) {
         dot.className = `map-dot status-${m.status}`;
         dot.title = `${m.name}: ${m.location}`;
         
-        // Randomize position based on Miner ID
-        let top=50, left=50;
-        if (m.location.includes("Section A")) { top = 20; left = 20; }
-        else if (m.location.includes("Section B")) { top = 20; left = 80; }
-        else if (m.location.includes("Section C")) { top = 80; left = 20; }
-        else { top = 80; left = 80; }
+        // Dynamic Position Simulation
+        // We use Date.now() to create smooth, continuous cyclic movement
+        const now = Date.now() / 1000; // time in seconds
         
-        // Jitter
-        top += (m.id * 5) % 15;
-        left += (m.id * 7) % 15;
+        let basePath = { top: 50, left: 50 };
         
-        dot.style.top = top + '%';
-        dot.style.left = left + '%';
+        // Assign base zones
+        if (m.location.includes("Section A")) basePath = { top: 25, left: 25 };
+        else if (m.location.includes("Section B")) basePath = { top: 25, left: 75 };
+        else if (m.location.includes("Section C")) basePath = { top: 75, left: 25 };
+        else basePath = { top: 75, left: 75 };
+        
+        // Orbit/Wander Logic
+        // Different speeds and radii for each worker based on ID
+        const speed = 0.5 + (m.id % 3) * 0.2; 
+        const radius = 10 + (m.id % 4) * 2;
+        
+        // Calculate dynamic offset using sine/cosine
+        const offsetX = Math.cos(now * speed + m.id) * radius;
+        const offsetY = Math.sin(now * speed + m.id) * radius;
+        
+        dot.style.top = (basePath.top + offsetY) + '%';
+        dot.style.left = (basePath.left + offsetX) + '%';
         
         dot.onclick = () => openWorkerModal(m.id);
         
