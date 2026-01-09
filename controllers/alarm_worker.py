@@ -69,7 +69,7 @@ except Exception as e:  # pragma: no cover
     TopicAlreadyExistsError = None  # type: ignore
     _KAFKA_IMPORT_ERROR = e
 
-from db_interfaces.alarm_db import store_alarm_event
+from db_interfaces.alarm_db import store_alarm_event, ensure_alarm_table_exists
 from db_interfaces.scd40_db import fetch_recent_scd40
 from db_interfaces.ds18b20_db import fetch_recent_ds18b20
 from db_interfaces.mpu6050_db import fetch_recent_mpu6050
@@ -495,6 +495,12 @@ def run() -> None:
     thresholds = _get_thresholds()
     buzzer = _get_buzzer()
     led = _get_led()
+
+    # Initialize DB table once to avoid deadlocks
+    try:
+        ensure_alarm_table_exists()
+    except Exception as e:
+        logger.error(f"Failed to ensure DB table: {e}")
 
     # Choose mode: 'db' polls database directly, 'kafka' uses Kafka consumer
     mode = os.getenv("ALARM_MODE", "db").lower()

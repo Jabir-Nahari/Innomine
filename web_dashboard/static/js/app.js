@@ -181,35 +181,35 @@ function renderAlarms(alarms) {
 }
 
 function renderMap(miners) {
-    // We want to preserve existing dots to allow transitions CSS
-    // But for simplicity in this MVP, we re-render. A better approach is differencing.
-    // Let's re-render but assume animations handle the "jump"
-    
-    // Clear existing dots but keep grid
-    const dots = els.mapContainer.querySelectorAll('.map-dot');
-    dots.forEach(d => d.remove());
-    
     miners.forEach((m, i) => {
-        // Calculate stable pseudo-random position based on ID if real pos mapping existed
-        // Here we simulate movement slightly based on time if we wanted animation logic
-        
-        // Simulating simple movement around a base point
+        // Calculate position (same logic as before or slightly improved)
         const t = Date.now() / 1000;
         let baseX = 20 + (i % 4) * 20;
         let baseY = 30 + Math.floor(i / 4) * 30;
         
-        // Add wander
         let x = baseX + Math.sin(t + i) * 2;
         let y = baseY + Math.cos(t + i * 2) * 2;
         
-        const dot = document.createElement('div');
-        dot.className = `map-dot ${m.status}`;
+        // Find existing dot
+        let dot = els.mapContainer.querySelector(`.map-dot[data-id="${m.id}"]`);
+        
+        if (!dot) {
+            dot = document.createElement('div');
+            dot.className = `map-dot ${m.status}`;
+            dot.dataset.id = m.id;
+            dot.innerHTML = `<div class="map-tooltip">${m.name}</div>`;
+            dot.onclick = () => openWorkerDetails(m.id);
+            els.mapContainer.appendChild(dot);
+        } else {
+            // Update status class if changed
+            dot.className = `map-dot ${m.status}`;
+            // Update tooltip text if needed
+             dot.querySelector('.map-tooltip').textContent = m.name;
+        }
+        
+        // Apply position with CSS transition
         dot.style.left = `${x}%`;
         dot.style.top = `${y}%`;
-        dot.innerHTML = `<div class="map-tooltip">${m.name}</div>`;
-        dot.onclick = () => openWorkerDetails(m.id);
-        
-        els.mapContainer.appendChild(dot);
     });
 }
 
@@ -225,7 +225,7 @@ async function loadConfig() {
         els.beepVal.textContent = cfg.beeps;
         els.ledToggle.checked = cfg.led_enabled;
     } catch (e) {
-        console.error(e);
+        console.error("Config load error:", e);
     }
 }
 
@@ -236,14 +236,20 @@ async function saveConfig() {
         led_enabled: els.ledToggle.checked
     };
     try {
-        await fetch('/api/config', {
+        const res = await fetch('/api/config', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
+        
+        if (!res.ok) {
+            throw new Error(`Server error: ${res.status} ${await res.text()}`);
+        }
+        
         alert("Configuration updated!");
     } catch (e) {
-        alert("Failed to save config");
+        alert("Failed to save config: " + e.message);
+        console.error(e);
     }
 }
 

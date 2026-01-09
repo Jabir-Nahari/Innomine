@@ -66,7 +66,8 @@ def store_scd40_reading(
     if recorded_at is None:
         recorded_at = _utc_now()
 
-    ensure_scd40_table_exists(table_name=table_name)
+    
+
 
     sql = f"""
     INSERT INTO {table_name} (recorded_at, co2_ppm, temperature_c, temperature_f, humidity_rh, is_simulated)

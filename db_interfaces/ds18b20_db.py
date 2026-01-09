@@ -61,7 +61,8 @@ def store_ds18b20_reading(
     if recorded_at is None:
         recorded_at = _utc_now()
 
-    ensure_ds18b20_table_exists(table_name=table_name)
+    
+
 
     sql = f"""
     INSERT INTO {table_name} (recorded_at, celsius, fahrenheit, is_simulated)

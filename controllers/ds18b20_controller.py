@@ -33,7 +33,7 @@ try:  # optional dependency
 except Exception:  # pragma: no cover
     W1ThermSensor = None  # type: ignore
 
-from db_interfaces.ds18b20_db import store_ds18b20_reading
+from db_interfaces.ds18b20_db import store_ds18b20_reading, ensure_ds18b20_table_exists
 
 
 logger = logging.getLogger(__name__)
@@ -123,6 +123,12 @@ def run_poll_loop(
     )
     topic = kafka_topic or os.getenv("DS18B20_KAFKA_TOPIC", "ds18b20.readings")
     producer = _get_kafka_producer()
+
+    # Initialize DB table once to avoid deadlocks
+    try:
+        ensure_ds18b20_table_exists()
+    except Exception as e:
+        logger.error(f"Failed to ensure DB table: {e}")
 
     while True:
         recorded_at = _utc_now()

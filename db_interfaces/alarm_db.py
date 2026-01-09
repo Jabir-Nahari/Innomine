@@ -55,7 +55,8 @@ def store_alarm_event(
     if triggered_at is None:
         triggered_at = _utc_now()
 
-    ensure_alarm_table_exists(table_name=table_name)
+    
+
 
     sql = f"""
     INSERT INTO {table_name} (triggered_at, sensor, metric, value, threshold, severity, message)

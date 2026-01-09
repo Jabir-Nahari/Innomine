@@ -33,7 +33,7 @@ try:  # optional dependency
 except Exception:  # pragma: no cover
     KafkaProducer = None  # type: ignore
 
-from db_interfaces.scd40_db import store_scd40_reading
+from db_interfaces.scd40_db import store_scd40_reading, ensure_scd40_table_exists
 from controllers.i2c_utils import get_i2c, normalize_i2c_address
 
 
@@ -135,6 +135,12 @@ def run_poll_loop(
         traceback.print_exc()
         logger.warning("SCD40 init failed (%s). USING SIMULATED DATA.", e)
     producer = _get_kafka_producer()
+
+    # Initialize DB table once to avoid deadlocks
+    try:
+        ensure_scd40_table_exists()
+    except Exception as e:
+        logger.error(f"Failed to ensure DB table: {e}")
 
     while True:
         recorded_at = _utc_now()

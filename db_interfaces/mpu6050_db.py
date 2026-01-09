@@ -78,7 +78,8 @@ def store_mpu6050_reading(
     if recorded_at is None:
         recorded_at = _utc_now()
 
-    ensure_mpu6050_table_exists(table_name=table_name)
+    
+
 
     sql = f"""
     INSERT INTO {table_name} (

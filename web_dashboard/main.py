@@ -165,6 +165,10 @@ def simulate_miner(miner_id: int, real_data: Dict[str, Any] = None) -> MinerStat
         temp = real_data.get("temperature_c")
         hum = real_data.get("humidity_rh")
         
+        # USE REAL SENSOR TEMP AS BODY TEMP (per user request)
+        if temp is not None:
+            bt = temp
+
         # Motion
         if "accel_x_g" in real_data:
              motion = abs(real_data["accel_x_g"]) + abs(real_data.get("accel_y_g", 0))
