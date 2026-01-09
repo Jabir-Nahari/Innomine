@@ -145,11 +145,30 @@ def get_real_sensor_data() -> Dict[str, Any]:
         print(f"Error fetching sensor data: {e}")
     return data
     
-# ... (get_battery_cap remains) ...
+def get_battery_cap() -> int:
+    """Read battery capacity if available on Pi."""
+    try:
+        # Common path for Pi juice or UPS HATs
+        path = "/sys/class/power_supply/BAT0/capacity"
+        with open(path, "r") as f:
+            val = int(f.read().strip())
+            return max(0, min(100, val))
+    except Exception:
+        return 100
 
 def simulate_miner(miner_id: int, real_data: Dict[str, Any] = None) -> MinerStats:
-    # ...
+    t = time.time() + miner_id * 100
+    is_real = (miner_id == 1)
     
+    # Vital signs (Simulated for all currently)
+    hr = 72 + int(15 * math.sin(t / 30)) + random.randint(-5, 5)
+    bt = 36.5 + 0.5 * math.sin(t / 60) + random.uniform(-0.2, 0.2)
+    
+    co2 = None
+    temp = None
+    hum = None
+    motion = None
+
     # Environment
     if is_real and real_data:
         co2 = real_data.get("co2_ppm")
