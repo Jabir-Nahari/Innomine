@@ -395,7 +395,7 @@ def run_db_polling_mode(thresholds: Thresholds, buzzer, led) -> None:
                         "sensor": "scd40",
                         "recorded_at": row.get("recorded_at"),
                         "co2_ppm": row.get("co2_ppm"),
-                        "temperature_c": row.get("temperature_c"),
+                        # "temperature_c": row.get("temperature_c"), # EXPLICITLY DISABLED: Use DS18B20 for temp
                         "humidity_rh": row.get("humidity_rh"),
                     },
                     thresholds=thresholds,
@@ -424,7 +424,7 @@ def run_db_polling_mode(thresholds: Thresholds, buzzer, led) -> None:
                     payload={
                         "sensor": "mpu6050",
                         "recorded_at": row.get("recorded_at"),
-                        "temperature_c": row.get("temperature_c"),
+                        # "temperature_c": row.get("temperature_c"), # EXPLICITLY DISABLED: Use DS18B20 for temp
                     },
                     thresholds=thresholds,
                     buzzer=buzzer,

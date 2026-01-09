@@ -120,60 +120,48 @@ def get_real_sensor_data() -> Dict[str, Any]:
                 "humidity_rh": scd[0]["humidity_rh"]
             })
             
-        # DS18B20 (override temp if needed, or keep separate)
-        # For simplicity, let's keep DS18B20 separate or just use SCD40 for environment
+        # DS18B20 (GPIO 4 Sensor - Primary Temperature)
+        ds = fetch_recent_ds18b20(limit=1, since=since)
+        if ds:
+            # Overwrite SCD40 temp with DS18B20 temp as requested
+            data["temperature_c"] = ds[0]["celsius"]
         
         # MPU6050
         mpu = fetch_recent_mpu6050(limit=1, since=since)
         if mpu:
-            data.update({
-                "accel_x_g": mpu[0]["accel_x_g"],
-                "accel_y_g": mpu[0]["accel_y_g"]
-            })
+            # Calculate Total Motion Vector (Magnitude of 3D Acceleration)
+            # Standard way to combine X,Y,Z: sqrt(x^2 + y^2 + z^2)
+            ax = mpu[0]["accel_x_g"]
+            ay = mpu[0]["accel_y_g"]
+            az = mpu[0]["accel_z_g"]
+            total_motion = math.sqrt(ax**2 + ay**2 + az**2)
             
+            data.update({
+                "motion_g": total_motion,
+                "accel_x_g": ax # Keep raw if needed
+            })
+
     except Exception as e:
         print(f"Error fetching sensor data: {e}")
     return data
-
-def get_battery_cap() -> int:
-    """Read battery capacity if available on Pi."""
-    try:
-        # Common path for Pi juice or UPS HATs
-        path = "/sys/class/power_supply/BAT0/capacity"
-        with open(path, "r") as f:
-            val = int(f.read().strip())
-            return max(0, min(100, val))
-    except Exception:
-        return 100
+    
+# ... (get_battery_cap remains) ...
 
 def simulate_miner(miner_id: int, real_data: Dict[str, Any] = None) -> MinerStats:
-    t = time.time() + miner_id * 100
-    is_real = (miner_id == 1)
+    # ...
     
-    # Vital signs (Simulated for all currently)
-    hr = 72 + int(15 * math.sin(t / 30)) + random.randint(-5, 5)
-    bt = 36.5 + 0.5 * math.sin(t / 60) + random.uniform(-0.2, 0.2)
-    
-    co2 = None
-    temp = None
-    hum = None
-    motion = None
-
     # Environment
     if is_real and real_data:
         co2 = real_data.get("co2_ppm")
         temp = real_data.get("temperature_c")
         hum = real_data.get("humidity_rh")
         
-        # USE REAL SENSOR TEMP AS BODY TEMP (per user request)
+        # USE REAL SENSOR TEMP AS BODY TEMP
         if temp is not None:
             bt = temp
 
-        # Motion
-        if "accel_x_g" in real_data:
-             motion = abs(real_data["accel_x_g"]) + abs(real_data.get("accel_y_g", 0))
-        else:
-             motion = 0
+        # Motion (Total Magnitude)
+        motion = real_data.get("motion_g", 0)
              
         battery = get_battery_cap()
     else:

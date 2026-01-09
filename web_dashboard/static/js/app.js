@@ -132,7 +132,7 @@ function renderUnit1(data) {
         { label: "CO₂ Level", value: data.co2_ppm || "--", unit: "ppm", status: getStatus(data.co2_ppm, 'co2') },
         { label: "Temperature", value: data.temperature_c ? data.temperature_c.toFixed(1) : "--", unit: "°C", status: getStatus(data.temperature_c, 'temp') },
         { label: "Humidity", value: data.humidity_rh ? data.humidity_rh.toFixed(1) : "--", unit: "%RH", status: "safe" },
-        { label: "Motion X", value: data.accel_x_g ? data.accel_x_g.toFixed(3) : "--", unit: "g", status: "safe" }
+        { label: "Motion", value: data.motion_g ? data.motion_g.toFixed(3) : "--", unit: "g", status: "safe" }
     ];
     
     els.unit1Grid.innerHTML = metrics.map(m => `
@@ -143,137 +143,15 @@ function renderUnit1(data) {
     `).join('');
 }
 
-function renderWorkers(miners) {
-    els.workersGrid.innerHTML = miners.map(m => `
-        <div class="worker-card ${m.status}" onclick="openWorkerDetails(${m.id})">
-            <div class="w-header">
-                <div>
-                    <div class="w-name">${m.name} ${m.is_real_data ? '<span style="color:var(--accent-green); font-size:0.7em">● LIVE</span>' : ''}</div>
-                    <div class="w-loc">${m.location}</div>
-                </div>
-                <div class="badge badge-${m.is_real_data ? 'live' : 'simulated'}">${m.status.toUpperCase()}</div>
-            </div>
-            <div class="w-stats">
-                <span title="Heart Rate">❤️ ${m.heart_rate}</span>
-                <span title="Body Temp">🌡️ ${m.body_temp}°</span>
-                ${m.env_temp ? `<span title="Env Temp" style="color:var(--accent-cyan)">🌍 ${m.env_temp}°</span>` : ''}
-                <span class="status-${getStatus(m.co2_ppm, 'co2')}" title="CO2">💨 ${m.co2_ppm || '--'}</span>
-            </div>
-        </div>
-    `).join('');
-}
-
-function renderAlarms(alarms) {
-    if (alarms.length === 0) {
-        els.alertList.innerHTML = '<div style="padding:1rem; text-align:center; color:#64748b">No active alerts</div>';
-        return;
-    }
-    
-    els.alertList.innerHTML = alarms.map(a => `
-        <div class="alert-item ${a.severity}">
-            <div class="alert-info">
-                <h4>${a.metric} - ${a.sensor} ${a.is_simulated ? '<span style="font-size:0.6em; opacity:0.6">[SIM]</span>' : ''}</h4>
-                <p>${a.message}</p>
-            </div>
-            <div class="alert-time">${a.triggered_at}</div>
-        </div>
-    `).join('');
-}
-
-function renderMap(miners) {
-    miners.forEach((m, i) => {
-        // Calculate position (same logic as before or slightly improved)
-        const t = Date.now() / 1000;
-        let baseX = 20 + (i % 4) * 20;
-        let baseY = 30 + Math.floor(i / 4) * 30;
-        
-        let x = baseX + Math.sin(t + i) * 2;
-        let y = baseY + Math.cos(t + i * 2) * 2;
-        
-        // Find existing dot
-        let dot = els.mapContainer.querySelector(`.map-dot[data-id="${m.id}"]`);
-        
-        if (!dot) {
-            dot = document.createElement('div');
-            dot.className = `map-dot ${m.status}`;
-            dot.dataset.id = m.id;
-            dot.innerHTML = `<div class="map-tooltip">${m.name}</div>`;
-            dot.onclick = () => openWorkerDetails(m.id);
-            els.mapContainer.appendChild(dot);
-        } else {
-            // Update status class if changed
-            dot.className = `map-dot ${m.status}`;
-            // Update tooltip text if needed
-             dot.querySelector('.map-tooltip').textContent = m.name;
-        }
-        
-        // Apply position with CSS transition
-        dot.style.left = `${x}%`;
-        dot.style.top = `${y}%`;
-    });
-}
-
-// --- Interactions ---
-
-async function loadConfig() {
-    try {
-        const res = await fetch('/api/config');
-        const cfg = await res.json();
-        els.buzzDur.value = cfg.duration_s;
-        els.durVal.textContent = cfg.duration_s;
-        els.buzzBeeps.value = cfg.beeps;
-        els.beepVal.textContent = cfg.beeps;
-        els.ledToggle.checked = cfg.led_enabled;
-    } catch (e) {
-        console.error("Config load error:", e);
-    }
-}
-
-async function saveConfig() {
-    const payload = {
-        duration_s: parseFloat(els.buzzDur.value),
-        beeps: parseInt(els.buzzBeeps.value),
-        led_enabled: els.ledToggle.checked
-    };
-    try {
-        const res = await fetch('/api/config', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        
-        if (!res.ok) {
-            throw new Error(`Server error: ${res.status} ${await res.text()}`);
-        }
-        
-        alert("Configuration updated!");
-    } catch (e) {
-        alert("Failed to save config: " + e.message);
-        console.error(e);
-    }
-}
-
-async function openWorkerDetails(id) {
-    currentMinerId = id;
-    els.modal.classList.remove('hidden');
-    
-    // Fetch miner data immediately from current cache or re-fetch would be better
-    // For now, next poll updates it, but let's fetch history
-    const res = await fetch('/api/dashboard'); // Get fresh single view
-    const data = await res.json();
-    const miner = data.miners.find(m => m.id === id);
-    if(miner) {
-        updateModalStats(miner);
-        els.modalTitle.textContent = `Worker Details: ${miner.name}`;
-    }
-    
-    loadChart(id);
-}
+// ...
 
 function updateModalStats(m) {
+    const isSim = m.id === 1; // Assuming ID 1 is the 'Live' one with some sim parts
     const items = [
-        { l: "Heart Rate", v: m.heart_rate, u: "bpm" },
+        { l: "Heart Rate", v: m.heart_rate + (isSim ? " <span style='font-size:0.7em; opacity:0.6'>(Sim)</span>" : ""), u: "bpm" },
         { l: "Body Temp", v: m.body_temp, u: "°C" },
+        { l: "Env Humidity", v: m.humidity || "--", u: "%" },
+        { l: "Motion", v: m.motion || "0", u: "g" },
         { l: "CO₂ Level", v: m.co2_ppm || "--", u: "ppm" },
         { l: "Battery", v: m.battery, u: "%" }
     ];
