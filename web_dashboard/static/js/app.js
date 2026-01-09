@@ -33,68 +33,53 @@ const els = {
     modalTitle: document.getElementById('modal-title'),
     modalStats: document.getElementById('modal-stats-grid'),
     closeModal: document.getElementById('close-modal'),
-    chartCanvas: document.getElementById('worker-chart')
+    chartCanvas: document.getElementById('worker-chart'),
+    // Tabs
+    tabs: document.querySelectorAll('.nav-tab'),
+    contents: document.querySelectorAll('.tab-content'),
+    overlay: document.getElementById('alarm-overlay')
 };
 
 // --- Initialization ---
-
-window.onerror = function(msg, url, line, col, error) {
-   const el = document.getElementById('site-health-grid');
-   if (el) el.innerHTML = `<div style="grid-column:1/-1; color:red; padding:10px;">
-      <strong>JS Error:</strong> ${msg}<br>
-      <small>${url}:${line}</small>
-   </div>`;
-};
+// ... window.onerror ...
 
 async function init() {
     updateClock();
     setInterval(updateClock, 1000);
     
-    // Load initial config
+    // Tab Switching Logic
+    els.tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+             // Deactivate all
+             els.tabs.forEach(t => t.classList.remove('active'));
+             els.contents.forEach(c => c.classList.remove('active'));
+             
+             // Activate click
+             tab.classList.add('active');
+             const targetId = `tab-${tab.dataset.tab}`;
+             document.getElementById(targetId).classList.add('active');
+        });
+    });
+
     loadConfig();
-    
-    // Start polling
     fetchDashboardData();
     setInterval(fetchDashboardData, REFRESH_INTERVAL_MS);
     
-    // Load alarms separately
     fetchAlarms();
-    setInterval(fetchAlarms, 5000);
+    setInterval(fetchAlarms, 2000); // Faster polling for alerts
     
-    if (els.buzzDur) els.buzzDur.addEventListener('input', (e) => {
-         if(els.durVal) els.durVal.textContent = e.target.value;
-    });
-    if (els.buzzBeeps) els.buzzBeeps.addEventListener('input', (e) => {
-         if(els.beepVal) els.beepVal.textContent = e.target.value;
-    });
-    // FIXED: Ensure alarmPoll listener is correctly bound
-    if (els.alarmPoll) els.alarmPoll.addEventListener('input', (e) => {
-         console.log("Slider move:", e.target.value); // Debug
-         if(els.pollVal) els.pollVal.textContent = e.target.value;
-    }); 
-    if (els.saveBtn) els.saveBtn.addEventListener('click', () => {
-        saveConfig(); // Call the saveConfig function
-        // The following lines seem to be misplaced from the modal close logic,
-        // but are included as per the instruction's explicit content.
-        els.modal.classList.add('hidden');
-        currentMinerId = null;
-    });
+    // Config Listeners
+    if (els.buzzDur) els.buzzDur.addEventListener('input', (e) => { if(els.durVal) els.durVal.textContent = e.target.value; });
+    if (els.buzzBeeps) els.buzzBeeps.addEventListener('input', (e) => { if(els.beepVal) els.beepVal.textContent = e.target.value; });
+    if (els.alarmPoll) els.alarmPoll.addEventListener('input', (e) => { if(els.pollVal) els.pollVal.textContent = e.target.value; }); 
+    if (els.saveBtn) els.saveBtn.addEventListener('click', saveConfig);
     
-    els.closeModal.addEventListener('click', () => {
-        els.modal.classList.add('hidden');
-        currentMinerId = null;
-    });
-    
-    // Close modal on outside click
-    els.modal.addEventListener('click', (e) => {
-        if (e.target === els.modal) {
-            els.modal.classList.add('hidden');
-            currentMinerId = null;
-        }
-    });
+    // Modal Listeners
+    if (els.closeModal) els.closeModal.addEventListener('click', () => { els.modal.classList.add('hidden'); currentMinerId = null; });
+    if (els.modal) els.modal.addEventListener('click', (e) => { if (e.target === els.modal) { els.modal.classList.add('hidden'); currentMinerId = null; } });
 }
 
-// --- Data Fetching & Rendering ---
+// --- Data Fetching ---
 
 async function fetchDashboardData() {
     try {
@@ -106,20 +91,15 @@ async function fetchDashboardData() {
         renderWorkers(data.miners);
         renderMap(data.miners);
         
-        // Update modal if open
+        // Check for immediate danger in live data for fast overlay trigger
+        checkVisualAlarm(data);
+        
         if (currentMinerId && !els.modal.classList.contains('hidden')) {
             const miner = data.miners.find(m => m.id === currentMinerId);
             if (miner) updateModalStats(miner);
         }
-        
     } catch (err) {
         console.error("Dashboard fetch error:", err);
-        if (els.healthGrid) {
-             els.healthGrid.innerHTML = `<div style="grid-column:1/-1; color:#ef4444; padding:1rem;">
-                <strong>Connection Error:</strong> ${err.message}<br>
-                <small>Ensure run_all.py is running and port 8000 is open.</small>
-             </div>`;
-        }
     }
 }
 
@@ -128,14 +108,46 @@ async function fetchAlarms() {
         const res = await fetch('/api/alarms');
         const alarms = await res.json();
         renderAlarms(alarms);
+        
+        // Also ensure overlay stays eager if alarms exist
+        // Filter for recent critical alarms
+        const hasCritical = alarms.some(a => a.severity === 'danger');
+        toggleOverlay(hasCritical);
+        
     } catch (e) {
-        console.error("Error fetching metrics:", e);
-        const el = document.getElementById("health-panel");
-        if (el) {
-             el.innerHTML = `<div style="color:orange; padding:10px;">Connection Error: ${e.message}. Backend may be starting...</div>`;
-        }
+        console.error("Error fetching alarms:", e);
     }
 }
+
+// --- Visual Alarm Logic ---
+function checkVisualAlarm(data) {
+    let triggering = false;
+    
+    // Check Unit 1 Live Data
+    const u1 = data.unit1_raw;
+    if (u1) {
+        if ((u1.co2_ppm && u1.co2_ppm >= 1000) || (u1.temperature_c && u1.temperature_c >= 38.0)) triggering = true;
+    }
+    
+    // Check Active Workers status
+    if (data.miners) {
+        if (data.miners.some(m => m.status === 'danger')) triggering = true;
+    }
+    
+    toggleOverlay(triggering);
+}
+
+function toggleOverlay(show) {
+    if (!els.overlay) return;
+    if (show) {
+        els.overlay.classList.remove('hidden');
+    } else {
+        els.overlay.classList.add('hidden');
+    }
+}
+
+// --- Renderers (Health, Unit1, Workers, Map, Alarms) ---
+// ... (Keep existing render functions) ...
 
 // --- Renderers ---
 

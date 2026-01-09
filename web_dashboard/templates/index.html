@@ -28,108 +28,121 @@
             </div>
         </header>
 
-        <!-- Main Grid Layout -->
-        <main class="dashboard-grid">
+        <!-- Tab Navigation -->
+        <nav class="main-nav">
+            <button class="nav-tab active" data-tab="dashboard">📊 Dashboard</button>
+            <button class="nav-tab" data-tab="map">🗺️ Mine Map</button>
+            <button class="nav-tab" data-tab="alerts">🚨 Alerts History</button>
+        </nav>
+
+        <!-- Container for Tabs -->
+        <main class="content-container">
             
-            <!-- Column 1: Health & Workers -->
-            <div class="col-left">
-                
-                <!-- Site Health Panel -->
-                <div class="panel health-panel">
-                    <div class="panel-header">
-                        <div class="panel-title">📊 Real-Time Site Health</div>
-                        <span class="badge badge-live">LIVE</span>
-                    </div>
-                    
-                    <div class="metric-grid" id="site-health-grid">
-                        <!-- Populated by JS -->
-                        <div class="metric-loader">Loading metrics...</div>
-                    </div>
-                </div>
+            <!-- TAB 1: DASHBOARD (Main Data) -->
+            <div id="tab-dashboard" class="tab-content active">
+                <div class="dash-layout">
+                    <!-- Left Col: Health & Unit 1 -->
+                    <div class="dash-col-left">
+                        <!-- Site Health Panel -->
+                        <div class="panel health-panel">
+                            <div class="panel-header">
+                                <div class="panel-title">Real-Time Site Health</div>
+                                <span class="badge badge-live">LIVE</span>
+                            </div>
+                            <div class="metric-grid" id="site-health-grid">
+                                <div class="metric-loader">Loading metrics...</div>
+                            </div>
+                        </div>
 
-                <!-- Unit 1 Real Data Card -->
-                <div class="panel unit-panel">
-                    <div class="panel-header">
-                        <div class="panel-title">🎯 Unit 1 - Live Sensor Data</div>
-                        <span class="badge badge-live">REAL DATA</span>
-                    </div>
-                    <div class="metric-grid" id="unit1-grid">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-
-                <!-- Active Workers Grid -->
-                <div class="panel workers-panel">
-                    <div class="panel-header">
-                        <div class="panel-title">👷 Active Workers</div>
-                        <div class="view-selector">
-                            <span class="view-all active">All</span>
-                            <!-- Buttons added dynamically if needed -->
+                        <!-- Unit 1 Real Data Card -->
+                        <div class="panel unit-panel">
+                            <div class="panel-header">
+                                <div class="panel-title">Unit 1 - Live Sensor Data</div>
+                                <span class="badge badge-live">REAL DATA</span>
+                            </div>
+                            <div class="metric-grid" id="unit1-grid"></div>
+                        </div>
+                        
+                         <!-- System Control (Moved here for easy access) -->
+                        <div class="panel config-panel">
+                            <div class="panel-header">
+                                <div class="panel-title">Note: Map & Alerts are in other tabs</div>
+                            </div>
+                            
+                            <div class="config-form">
+                                <div class="panel-header">
+                                    <div class="panel-title">⚙️ System Control</div>
+                                </div>
+                                <div class="form-group row">
+                                     <label>Alarm Poll: <span id="poll-val">2.0</span>s</label>
+                                     <input type="range" id="alarm-poll" min="0.5" max="10.0" step="0.5" style="width:60%">
+                                </div>
+                                <div class="form-group row">
+                                    <label>LED Enabled</label>
+                                    <input type="checkbox" id="led-toggle">
+                                </div>
+                                <details>
+                                    <summary style="font-size:0.8rem; cursor:pointer; margin-bottom:0.5rem">More Settings</summary>
+                                    <div class="form-group">
+                                        <label>Buzzer Duration: <span id="dur-val">0.5</span>s</label>
+                                        <input type="range" id="buzz-duration" min="0.5" max="5.0" step="0.5">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Beeps: <span id="beep-val">2</span></label>
+                                        <input type="range" id="buzz-beeps" min="1" max="5" step="1">
+                                    </div>
+                                </details>
+                                <button id="save-config-btn" class="btn-primary">Update Config</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="worker-cards-grid" id="workers-grid">
-                        <!-- Populated by JS -->
+
+                    <!-- Right Col: Active Workers List -->
+                    <div class="dash-col-right">
+                        <div class="panel workers-panel">
+                            <div class="panel-header">
+                                <div class="panel-title">👷 Active Workers</div>
+                            </div>
+                            <div class="worker-cards-grid" id="workers-grid"></div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Column 2: Alerts & Map -->
-            <div class="col-right">
-                
-                <!-- Alerts Panel -->
-                <div class="panel alerts-panel">
+            <!-- TAB 2: MINE MAP (Full View) -->
+            <div id="tab-map" class="tab-content">
+                <div class="panel map-panel-full">
                     <div class="panel-header">
-                        <div class="panel-title">🚨 AI-Prioritized Alerts</div>
-                        <span class="badge badge-simulated">DEMO MODE</span>
-                    </div>
-                    <div class="alert-list" id="alert-list">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-
-                <!-- Geospatial Map Panel -->
-                <div class="panel map-panel">
-                    <div class="panel-header">
-                        <div class="panel-title">🗺️ Mine Twin Map</div>
+                        <div class="panel-title">🗺️ Mine Twin Map (Full View)</div>
                         <span class="badge badge-simulated">SIMULATED POSITIONS</span>
                     </div>
-                    <div class="map-container" id="map-container">
+                    <div class="map-container full-height" id="map-container">
                         <div class="map-grid-bg"></div>
-                        <!-- Dots added via JS -->
                     </div>
                     <div class="map-legend">
                         🟢 Normal • 🔴 Hazard • Dots are clickable
                     </div>
                 </div>
-                
-                <!-- Settings / Config -->
-                <div class="panel config-panel">
-                    <div class="panel-header">
-                        <div class="panel-title">⚙️ System Control</div>
-                    </div>
-                    <div class="config-form">
-                        <div class="form-group">
-                            <label>Buzzer Duration: <span id="dur-val">0.5</span>s</label>
-                            <input type="range" id="buzz-duration" min="0.5" max="5.0" step="0.5">
-                        </div>
-                        <div class="form-group">
-                            <label>Beeps: <span id="beep-val">2</span></label>
-                            <input type="range" id="buzz-beeps" min="1" max="5" step="1">
-                        </div>
-                        <div class="form-group">
-                            <label>Alarm Poll: <span id="poll-val">2.0</span>s</label>
-                             <input type="range" id="alarm-poll" min="0.5" max="10.0" step="0.5">
-                        </div>
-                        <div class="form-group row">
-                            <label>LED Enabled</label>
-                            <input type="checkbox" id="led-toggle">
-                        </div>
-                        <button id="save-config-btn" class="btn-primary">Update Config</button>
-                    </div>
-                </div>
-
             </div>
+
+            <!-- TAB 3: ALERTS HISTORY -->
+            <div id="tab-alerts" class="tab-content">
+                <div class="panel alerts-panel-full">
+                    <div class="panel-header">
+                        <div class="panel-title">🚨 System Alert History</div>
+                    </div>
+                    <div class="alert-list full-list" id="alert-list"></div>
+                </div>
+            </div>
+
         </main>
+    </div>
+    
+    <!-- Visual Alarm Overlay -->
+    <div id="alarm-overlay" class="alarm-overlay hidden">
+        <div class="alarm-banner">
+            ⚠️ CRITICAL ALERT DETECTED ⚠️
+        </div>
     </div>
 
     <!-- Worker Detail Modal -->
