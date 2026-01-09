@@ -784,7 +784,7 @@ def render_mine_map_panel(miners: list):
     
     <style>
     /* Tooltip style for the dots */
-    .map-dot .map-tooltip {
+    .map-dot .map-tooltip {{
         visibility: hidden;
         width: 120px;
         background-color: rgba(15, 23, 42, 0.9);
@@ -801,12 +801,12 @@ def render_mine_map_panel(miners: list):
         transition: opacity 0.3s;
         border: 1px solid var(--border-color);
         font-size: 0.75rem;
-    }
+    }}
     
-    .map-dot:hover .map-tooltip {
+    .map-dot:hover .map-tooltip {{
         visibility: visible;
         opacity: 1;
-    }
+    }}
     </style>
     """, unsafe_allow_html=True)
 
