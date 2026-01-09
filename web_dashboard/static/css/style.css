@@ -506,6 +506,8 @@ body {
 .map-container.full-height {
     flex: 1;
     height: auto;
+    min-height: 60vh;
+    /* FORCE VISIBILITY: Ensure it has height! */
     /* Override fixed height */
 }
 

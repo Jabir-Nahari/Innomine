@@ -277,14 +277,15 @@ async def get_dashboard_data():
     }
 
 @app.get("/api/alarms", response_model=List[Alarm])
-async def get_alarms():
+async def get_alarms(limit: int = 100):
     # 1. Real DB alarms
     real_alarms = []
     try:
-        db_rows = fetch_recent_alarms(limit=5, since=_utc_now() - timedelta(hours=1))
+        # Fetch larger history (e.g. last 24 hours)
+        db_rows = fetch_recent_alarms(limit=limit, since=_utc_now() - timedelta(hours=24))
         for row in db_rows:
             real_alarms.append(Alarm(
-                triggered_at=row.get("triggered_at", _utc_now()).strftime("%H:%M:%S"),
+                triggered_at=row.get("triggered_at", _utc_now()).strftime("%Y-%m-%d %H:%M:%S"),
                 sensor=str(row.get("sensor", "unknown")),
                 metric=str(row.get("metric", "")),
                 value=float(row.get("value", 0)),
