@@ -657,9 +657,10 @@ def render_site_health_panel(real_data: dict, miners: list):
         with cols[0]:
             co2 = real_data.get("co2_ppm", "N/A")
             co2_status = get_status(co2, "co2_ppm") if isinstance(co2, (int, float)) else "safe"
+            co2_val = f"{co2:.0f}" if isinstance(co2, (int, float)) else str(co2)
             st.markdown(f"""
             <div class="metric-item">
-                <div class="metric-value {co2_status}">{co2:.0f if isinstance(co2, float) else co2}</div>
+                <div class="metric-value {co2_status}">{co2_val}</div>
                 <div class="metric-label">CO₂ <span class="metric-unit">ppm</span></div>
             </div>
             """, unsafe_allow_html=True)
@@ -667,27 +668,30 @@ def render_site_health_panel(real_data: dict, miners: list):
         with cols[1]:
             temp = real_data.get("temperature_c", "N/A")
             temp_status = get_status(temp, "temperature_c") if isinstance(temp, (int, float)) else "safe"
+            temp_val = f"{temp:.1f}" if isinstance(temp, (int, float)) else str(temp)
             st.markdown(f"""
             <div class="metric-item">
-                <div class="metric-value {temp_status}">{temp:.1f if isinstance(temp, float) else temp}°</div>
+                <div class="metric-value {temp_status}">{temp_val}°</div>
                 <div class="metric-label">Temperature <span class="metric-unit">°C</span></div>
             </div>
             """, unsafe_allow_html=True)
         
         with cols[2]:
             hum = real_data.get("humidity_rh", "N/A")
+            hum_val = f"{hum:.1f}" if isinstance(hum, (int, float)) else str(hum)
             st.markdown(f"""
             <div class="metric-item">
-                <div class="metric-value">{hum:.1f if isinstance(hum, float) else hum}%</div>
+                <div class="metric-value">{hum_val}%</div>
                 <div class="metric-label">Humidity</div>
             </div>
             """, unsafe_allow_html=True)
         
         with cols[3]:
             accel = real_data.get("accel_x_g", "N/A")
+            accel_val = f"{accel:.3f}" if isinstance(accel, (int, float)) else str(accel)
             st.markdown(f"""
             <div class="metric-item">
-                <div class="metric-value">{accel:.3f if isinstance(accel, float) else accel}</div>
+                <div class="metric-value">{accel_val}</div>
                 <div class="metric-label">Motion <span class="metric-unit">g</span></div>
             </div>
             """, unsafe_allow_html=True)
