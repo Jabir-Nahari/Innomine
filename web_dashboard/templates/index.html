@@ -130,6 +130,15 @@
                 <div class="panel alerts-panel-full">
                     <div class="panel-header">
                         <div class="panel-title">🚨 System Alert History</div>
+                        <div class="alert-controls" style="display:flex; align-items:center; gap:0.5rem; font-size:0.8rem;">
+                            <label for="alert-limit" style="color:var(--text-secondary)">Show:</label>
+                            <select id="alert-limit" style="background:#0f172a; color:white; border:1px solid var(--border-color); padding:0.2rem; border-radius:4px;">
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100" selected>100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="alert-list full-list" id="alert-list"></div>
                 </div>

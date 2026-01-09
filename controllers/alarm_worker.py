@@ -49,10 +49,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 try:  # optional dependency (Pi only)
-    from gpiozero import Buzzer, LED  # type: ignore
+    from gpiozero import Buzzer  # type: ignore
+    import board
+    import neopixel
 except Exception:  # pragma: no cover
     Buzzer = None  # type: ignore
-    LED = None  # type: ignore
+    board = None
+    neopixel = None
 
 try:  # optional dependency
     from kafka import KafkaConsumer, KafkaProducer  # type: ignore
@@ -136,30 +139,41 @@ def _get_buzzer():
 
 
 def _get_led():
-    if LED is None:  # pragma: no cover
-        logger.warning(
-            "gpiozero not available. LED OUTPUT WILL BE SIMULATED (no GPIO)."
-        )
-
+    """Initialize WS2812B NeoPixel Strip."""
+    if neopixel is None or board is None:
+        logger.warning("neopixel/board lib not found. LED STRIP SIMULATED.")
+        
         class _SimLED:
-            def on(self):
-                logger.warning("LED SIMULATED: ON")
-
-            def off(self):
-                logger.warning("LED SIMULATED: OFF")
+            def fill(self, color):
+                logger.warning(f"LED SIMULATED: FILL {color}")
+            def deinit(self): pass
 
         return _SimLED()
-
-    pin = _env_int("LED_GPIO_PIN", "27")
-    active_high = _env_bool("LED_ACTIVE_HIGH", "true")
-    return LED(pin, active_high=active_high)
+    
+    # WS2812B requires precise timing, usually on GPIO 18 (PCM) or 10, 12, 21.
+    # We default to GPIO 18 (pin 12 on board) mapping to board.D18
+    pin = board.D18 
+    
+    # Check env for overrides if user really wants another pin (needs sudo)
+    # Note: `board` attributes are dynamic, so typical env var usage is tricky. 
+    # We stick to D18 for stability unless configured otherwise.
+    
+    count = _env_int("LED_COUNT", "8") # Number of pixels
+    brightness = _env_float("LED_BRIGHTNESS", "0.5")
+    
+    try:
+        # auto_write=True means updates happen immediately
+        led = neopixel.NeoPixel(pin, count, brightness=brightness, auto_write=True)
+        return led
+    except Exception as e:
+        logger.error(f"Failed to init NeoPixel: {e}. Check sudo permissions.")
+        class _FailLED:
+            def fill(self, color): pass
+        return _FailLED()
 
 
 def _beep(buzzer, led) -> None:
-    """Activate buzzer and LED for alarm indication.
-    
-    Reads timing settings from shared config (controllable from UI).
-    """
+    """Activate buzzer and Flash LED Strip (Red) for alarm."""
     from controllers.alarm_config import load_config, get_buzzer_timing
     
     config = load_config()
@@ -171,13 +185,18 @@ def _beep(buzzer, led) -> None:
         config.buzzer_duration_s,
     )
 
+    RED = (255, 0, 0)
+    OFF = (0, 0, 0)
+
     for _ in range(beeps):
         buzzer.on()
         if config.led_enabled:
-            led.on()
+            led.fill(RED) # Set all pixels to red
+            
         time.sleep(on_s)
+        
         buzzer.off()
-        led.off()
+        led.fill(OFF)   # Turn off
         time.sleep(off_s)
 
 

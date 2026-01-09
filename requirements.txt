@@ -28,3 +28,5 @@ gpiozero>=2.0
 
 fastapi
 uvicorn[standard]
+rpi_ws281x
+adafruit-circuitpython-neopixel

@@ -37,7 +37,9 @@ const els = {
     // Tabs
     tabs: document.querySelectorAll('.nav-tab'),
     contents: document.querySelectorAll('.tab-content'),
-    overlay: document.getElementById('alarm-overlay')
+    overlay: document.getElementById('alarm-overlay'),
+    // Alert Limit
+    alertLimit: document.getElementById('alert-limit')
 };
 
 // --- Initialization ---
@@ -74,6 +76,9 @@ async function init() {
     if (els.alarmPoll) els.alarmPoll.addEventListener('input', (e) => { if(els.pollVal) els.pollVal.textContent = e.target.value; }); 
     if (els.saveBtn) els.saveBtn.addEventListener('click', saveConfig);
     
+    // Alert Limit Listener
+    if (els.alertLimit) els.alertLimit.addEventListener('change', () => fetchAlarms());
+    
     // Modal Listeners
     if (els.closeModal) els.closeModal.addEventListener('click', () => { els.modal.classList.add('hidden'); currentMinerId = null; });
     if (els.modal) els.modal.addEventListener('click', (e) => { if (e.target === els.modal) { els.modal.classList.add('hidden'); currentMinerId = null; } });
@@ -105,7 +110,8 @@ async function fetchDashboardData() {
 
 async function fetchAlarms() {
     try {
-        const res = await fetch('/api/alarms');
+        const limit = els.alertLimit ? els.alertLimit.value : 100;
+        const res = await fetch(`/api/alarms?limit=${limit}`);
         const alarms = await res.json();
         renderAlarms(alarms);
         
