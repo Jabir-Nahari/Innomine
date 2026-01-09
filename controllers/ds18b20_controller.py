@@ -47,8 +47,23 @@ def _c_to_f(celsius: float) -> float:
     return celsius * 9.0 / 5.0 + 32.0
 
 
-def read_ds18b20_temperature() -> Tuple[float, float]:
+def _get_sensor():
+    """Return W1ThermSensor instance if available."""
+    if W1ThermSensor is not None:
+        try:
+            return W1ThermSensor()
+        except Exception:
+            return None
+    return None
+
+def read_ds18b20_temperature(sensor=None) -> Tuple[float, float]:
     """Return (celsius, fahrenheit)."""
+    # Use passed sensor instance if available (Preferred)
+    if sensor is not None:
+        c = float(sensor.get_temperature())
+        return c, _c_to_f(c)
+
+    # Legacy/Fallback: Initialize on spot (not recommended for loops)
     if W1ThermSensor is not None:
         try:
             sensor = W1ThermSensor()
@@ -130,11 +145,25 @@ def run_poll_loop(
     except Exception as e:
         logger.error(f"Failed to ensure DB table: {e}")
 
+    # Initialize sensor once
+    sensor = None
+    is_simulated = False
+    try:
+        sensor = _get_sensor()
+        if sensor is None and W1ThermSensor is not None:
+             logger.warning("W1ThermSensor installed but failed to init. Using sysfs fallback or sim.")
+    except Exception as e:
+        logger.warning(f"Sensor init failed: {e}")
+
     while True:
         recorded_at = _utc_now()
-        is_simulated = False
+        
+        # If we failed to get sensor initially, maybe retry? 
+        # For now, if sensor is None, read() falls back to sysfs
+        
         try:
-            c, f = read_ds18b20_temperature()
+            c, f = read_ds18b20_temperature(sensor)
+            is_simulated = False # Reset if successful
         except Exception as e:
             is_simulated = True
             c, f = _simulate_ds18b20_temperature()
