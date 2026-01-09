@@ -21,9 +21,11 @@ const els = {
     // Config
     buzzDur: document.getElementById('buzz-duration'),
     buzzBeeps: document.getElementById('buzz-beeps'),
+    alarmPoll: document.getElementById('alarm-poll'),
     ledToggle: document.getElementById('led-toggle'),
     durVal: document.getElementById('dur-val'),
     beepVal: document.getElementById('beep-val'),
+    pollVal: document.getElementById('poll-val'),
     saveBtn: document.getElementById('save-config-btn'),
     
     // Modal
