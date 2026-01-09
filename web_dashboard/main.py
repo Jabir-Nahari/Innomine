@@ -297,31 +297,10 @@ async def get_alarms(limit: int = 100):
     except Exception as e:
         print(f"DB Alarm fetch error: {e}")
 
-    # 2. Simulated alarms for demo
-    sim_alarms = [
-        Alarm(
-            triggered_at=(datetime.now() - timedelta(minutes=2)).strftime("%H:%M"),
-            sensor="SECTION A2",
-            metric="GAS",
-            value=0,
-            threshold=0,
-            severity="critical",
-            message="GAS LEAK DETECTED",
-            is_simulated=True
-        ),
-        Alarm(
-            triggered_at=(datetime.now() - timedelta(minutes=5)).strftime("%H:%M"),
-            sensor="CRUSHER 5",
-            metric="VIB",
-            value=0,
-            threshold=0,
-            severity="warning",
-            message="EQUIPMENT MALFUNCTION",
-            is_simulated=True
-        )
-    ]
+    # 2. Simulated alarms -> REMOVED to show only real DB alerts
+    # sim_alarms = [...]
     
-    return real_alarms + sim_alarms
+    return real_alarms
 
 @app.get("/api/history/{miner_id}")
 async def get_history(miner_id: int):
