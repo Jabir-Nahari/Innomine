@@ -36,6 +36,14 @@ const els = {
 
 // --- Initialization ---
 
+window.onerror = function(msg, url, line, col, error) {
+   const el = document.getElementById('site-health-grid');
+   if (el) el.innerHTML = `<div style="grid-column:1/-1; color:red; padding:10px;">
+      <strong>JS Error:</strong> ${msg}<br>
+      <small>${url}:${line}</small>
+   </div>`;
+};
+
 async function init() {
     updateClock();
     setInterval(updateClock, 1000);
@@ -90,6 +98,12 @@ async function fetchDashboardData() {
         
     } catch (err) {
         console.error("Dashboard fetch error:", err);
+        if (els.healthGrid) {
+             els.healthGrid.innerHTML = `<div style="grid-column:1/-1; color:#ef4444; padding:1rem;">
+                <strong>Connection Error:</strong> ${err.message}<br>
+                <small>Ensure run_all.py is running and port 8000 is open.</small>
+             </div>`;
+        }
     }
 }
 
@@ -98,8 +112,12 @@ async function fetchAlarms() {
         const res = await fetch('/api/alarms');
         const alarms = await res.json();
         renderAlarms(alarms);
-    } catch (err) {
-        console.error("Alarm fetch error:", err);
+    } catch (e) {
+        console.error("Error fetching metrics:", e);
+        const el = document.getElementById("health-panel");
+        if (el) {
+             el.innerHTML = `<div style="color:orange; padding:10px;">Connection Error: ${e.message}. Backend may be starting...</div>`;
+        }
     }
 }
 
