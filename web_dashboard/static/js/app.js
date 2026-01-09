@@ -161,7 +161,148 @@ function renderUnit1(data) {
     `).join('');
 }
 
-// ...
+// --- Restored Renderers & Logic ---
+
+function renderWorkers(miners) {
+    if (!els.workersGrid) return;
+    els.workersGrid.innerHTML = miners.map(m => `
+        <div class="worker-card status-${m.status}" onclick="openWorkerModal(${m.id})">
+            <div class="worker-header">
+                <span class="worker-id">${m.name}</span>
+                <span class="status-dot"></span>
+            </div>
+            <div class="worker-body">
+                <div>${m.location}</div>
+                <div style="font-size:0.8rem; opacity:0.7">${m.shift} Shift</div>
+            </div>
+             <div class="worker-footer">
+                <span>🔋 ${m.battery}%</span>
+                <span>❤ ${m.heart_rate}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderAlarms(alarms) {
+    if (!els.alertList) return;
+    if (alarms.length === 0) {
+        els.alertList.innerHTML = '<div style="padding:1rem; color:#64748b; text-align:center">No active alerts</div>';
+        return;
+    }
+    els.alertList.innerHTML = alarms.map(a => `
+        <div class="alert-item severity-${a.severity}">
+            <div class="alert-header">
+                <strong>${a.sensor}</strong>
+                <span style="font-size:0.8rem">${a.triggered_at}</span>
+            </div>
+            <div>${a.message}</div>
+        </div>
+    `).join('');
+}
+
+function renderMap(miners) {
+    if (!els.mapContainer) return;
+    // Simple visualization: 4 Sections
+    // Clear existing dots first (simple approach) or update them
+    // For robustness, we'll just rebuild for now
+    
+    // Ensure background grid exists
+    if (!els.mapContainer.querySelector('.map-grid-bg')) {
+         els.mapContainer.innerHTML = '<div class="map-grid-bg"></div>';
+    }
+    
+    // Remove old dots
+    const oldDots = els.mapContainer.querySelectorAll('.worker-dot');
+    oldDots.forEach(d => d.remove());
+    
+    miners.forEach(m => {
+        const dot = document.createElement('div');
+        dot.className = `worker-dot status-${m.status}`;
+        dot.title = `${m.name}: ${m.location}`;
+        
+        // Randomize position slightly based on Miner ID/Time to simulate movement
+        // Or strictly map location strings
+        let top=50, left=50;
+        if (m.location.includes("Section A")) { top = 20; left = 20; }
+        else if (m.location.includes("Section B")) { top = 20; left = 80; }
+        else if (m.location.includes("Section C")) { top = 80; left = 20; }
+        else { top = 80; left = 80; }
+        
+        // Add jitter
+        top += (m.id * 5) % 10;
+        left += (m.id * 7) % 10;
+        
+        dot.style.top = top + '%';
+        dot.style.left = left + '%';
+        
+        dot.onclick = () => openWorkerModal(m.id);
+        
+        els.mapContainer.appendChild(dot);
+    });
+}
+
+// --- Config Logic ---
+
+async function loadConfig() {
+    try {
+        const res = await fetch('/api/config');
+        const config = await res.json();
+        
+        if (els.buzzDur) {
+            els.buzzDur.value = config.duration_s;
+            els.durVal.textContent = config.duration_s;
+        }
+        if (els.buzzBeeps) {
+            els.buzzBeeps.value = config.beeps;
+            els.beepVal.textContent = config.beeps;
+        }
+        if (els.ledToggle) els.ledToggle.checked = config.led_enabled;
+    } catch (err) {
+        console.error("Config load error:", err);
+    }
+}
+
+async function saveConfig() {
+    const config = {
+        duration_s: parseFloat(els.buzzDur.value),
+        beeps: parseInt(els.buzzBeeps.value),
+        led_enabled: els.ledToggle.checked
+    };
+    
+    els.saveBtn.textContent = "Saving...";
+    els.saveBtn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        
+        if (res.ok) {
+            els.saveBtn.textContent = "Saved!";
+            setTimeout(() => {
+                els.saveBtn.textContent = "Update Config";
+                els.saveBtn.disabled = false;
+            }, 2000);
+        } else {
+            throw new Error(await res.text());
+        }
+    } catch (err) {
+        alert("Failed to save: " + err.message);
+        els.saveBtn.textContent = "Error";
+        els.saveBtn.disabled = false;
+    }
+}
+
+// Global modal opener
+window.openWorkerModal = function(id) {
+    currentMinerId = id;
+    if (els.modalStats) els.modalStats.innerHTML = 'Loading...';
+    if (els.modal) els.modal.classList.remove('hidden');
+    if (els.modalTitle) els.modalTitle.textContent = `Worker 00${id}`;
+    loadChart(id);
+};
 
 function updateModalStats(m) {
     const isSim = m.id === 1; // Assuming ID 1 is the 'Live' one with some sim parts
