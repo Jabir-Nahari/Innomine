@@ -121,7 +121,8 @@ def fetch_recent_mpu6050(
     since: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ):
-    ensure_mpu6050_table_exists(table_name=table_name)
+    
+
 
     if since is None:
         sql = f"""

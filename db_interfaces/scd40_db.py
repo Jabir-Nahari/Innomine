@@ -100,7 +100,8 @@ def fetch_recent_scd40(
     table_name: str = DEFAULT_TABLE_NAME,
 ):
     """Return recent rows as list of dicts (for Streamlit/Altair)."""
-    ensure_scd40_table_exists(table_name=table_name)
+    
+
 
     if since is None:
         sql = f"""

@@ -154,9 +154,10 @@ function renderWorkers(miners) {
                 <div class="badge badge-${m.is_real_data ? 'live' : 'simulated'}">${m.status.toUpperCase()}</div>
             </div>
             <div class="w-stats">
-                <span>❤️ ${m.heart_rate} bpm</span>
-                <span>🌡️ ${m.body_temp}°C</span>
-                <span class="status-${getStatus(m.co2_ppm, 'co2')}">💨 ${m.co2_ppm || '--'} ppm</span>
+                <span title="Heart Rate">❤️ ${m.heart_rate}</span>
+                <span title="Body Temp">🌡️ ${m.body_temp}°</span>
+                ${m.env_temp ? `<span title="Env Temp" style="color:var(--accent-cyan)">🌍 ${m.env_temp}°</span>` : ''}
+                <span class="status-${getStatus(m.co2_ppm, 'co2')}" title="CO2">💨 ${m.co2_ppm || '--'}</span>
             </div>
         </div>
     `).join('');

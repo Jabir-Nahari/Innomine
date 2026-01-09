@@ -87,7 +87,8 @@ def fetch_recent_ds18b20(
     since: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ):
-    ensure_ds18b20_table_exists(table_name=table_name)
+    
+
 
     if since is None:
         sql = f"""

@@ -89,7 +89,8 @@ def fetch_recent_alarms(
     since: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ):
-    ensure_alarm_table_exists(table_name=table_name)
+    
+
 
     if since is None:
         sql = f"""

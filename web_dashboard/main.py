@@ -135,6 +135,17 @@ def get_real_sensor_data() -> Dict[str, Any]:
         print(f"Error fetching sensor data: {e}")
     return data
 
+def get_battery_cap() -> int:
+    """Read battery capacity if available on Pi."""
+    try:
+        # Common path for Pi juice or UPS HATs
+        path = "/sys/class/power_supply/BAT0/capacity"
+        with open(path, "r") as f:
+            val = int(f.read().strip())
+            return max(0, min(100, val))
+    except Exception:
+        return 100
+
 def simulate_miner(miner_id: int, real_data: Dict[str, Any] = None) -> MinerStats:
     t = time.time() + miner_id * 100
     is_real = (miner_id == 1)
@@ -143,6 +154,11 @@ def simulate_miner(miner_id: int, real_data: Dict[str, Any] = None) -> MinerStat
     hr = 72 + int(15 * math.sin(t / 30)) + random.randint(-5, 5)
     bt = 36.5 + 0.5 * math.sin(t / 60) + random.uniform(-0.2, 0.2)
     
+    co2 = None
+    temp = None
+    hum = None
+    motion = None
+
     # Environment
     if is_real and real_data:
         co2 = real_data.get("co2_ppm")
@@ -155,12 +171,14 @@ def simulate_miner(miner_id: int, real_data: Dict[str, Any] = None) -> MinerStat
         else:
              motion = 0
              
+        battery = get_battery_cap()
     else:
         # Simulation logic
         co2 = 400 + 100 * math.sin(t / 45) + random.randint(-20, 20)
         temp = 22 + 3 * math.sin(t / 50) + random.uniform(-1, 1)
         hum = 45 + 10 * math.sin(t / 40) + random.uniform(-3, 3)
         motion = 0.1 + 0.2 * abs(math.sin(t / 10))
+        battery = max(15, 100 - (miner_id * 10) - random.randint(0, 5))
     
     locations = ["Section A - Shaft 1", "Section B - Tunnel 2", "Section C - Main Gallery", "Section D - Extraction"]
     
@@ -183,7 +201,7 @@ def simulate_miner(miner_id: int, real_data: Dict[str, Any] = None) -> MinerStat
         env_temp=round(temp, 1) if temp is not None else None,
         humidity=round(hum, 1) if hum is not None else None,
         motion=round(motion, 3) if motion is not None else None,
-        battery=max(15, 100 - (miner_id * 10) - random.randint(0, 5)),
+        battery=battery,
         is_real_data=is_real,
         status=status
     )
