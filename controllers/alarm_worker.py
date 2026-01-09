@@ -1,6 +1,6 @@
 """Kafka-based alarm worker that drives a buzzer and LED.
 
-- Consumes sensor reading events from Kafka.
+- Consumes sensor reading events from Kafka OR polls the database directly.
 - Checks thresholds (temperature, CO2, etc.).
 - If exceeded: buzzes (gpiozero), lights LED, and publishes an alarm event.
 - Also logs alarm events to Postgres.
@@ -15,6 +15,7 @@ Env vars:
 - KAFKA_BOOTSTRAP_SERVERS (default localhost:9092)
 - ALARM_CONSUME_TOPICS (comma-separated; default: ds18b20.readings,scd40.readings,mpu6050.readings)
 - ALARM_PUBLISH_TOPIC (default alarms.events)
+- ALARM_MODE (kafka or db, default: db) - Use 'db' for direct database polling
 
 Thresholds:
 - TEMP_C_CRITICAL (default 38.0) - Human body fever threshold
@@ -31,6 +32,9 @@ Buzzer:
 LED:
 - LED_GPIO_PIN (default 27)
 - LED_ACTIVE_HIGH (default true)
+
+DB Polling:
+- ALARM_POLL_INTERVAL_S (default 2) - How often to check the database
 """
 
 from __future__ import annotations
@@ -41,7 +45,7 @@ import os
 import time
 import traceback
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 try:  # optional dependency (Pi only)
@@ -66,6 +70,9 @@ except Exception as e:  # pragma: no cover
     _KAFKA_IMPORT_ERROR = e
 
 from db_interfaces.alarm_db import store_alarm_event
+from db_interfaces.scd40_db import fetch_recent_scd40
+from db_interfaces.ds18b20_db import fetch_recent_ds18b20
+from db_interfaces.mpu6050_db import fetch_recent_mpu6050
 
 
 logger = logging.getLogger(__name__)
@@ -154,6 +161,8 @@ def _beep(buzzer, led) -> None:
     off_s = _env_float("BUZZER_OFF_S", "0.5")
     beeps = _env_int("BUZZER_BEEPS", "3")
 
+    logger.warning("🚨 ALARM TRIGGERED - Activating buzzer and LED (%d beeps)", beeps)
+
     for _ in range(beeps):
         buzzer.on()
         led.on()
@@ -182,7 +191,6 @@ def _get_kafka():
     group_id = os.getenv("ALARM_CONSUMER_GROUP", "innomine-alarm")
 
     # Ensure topics exist to avoid noisy "Topic not found in cluster metadata" errors.
-    # Controllers may have Kafka disabled, so producers won't auto-create topics.
     publish_topic = os.getenv("ALARM_PUBLISH_TOPIC", "alarms.events")
     all_topics = sorted({*consume_topics, publish_topic})
     if KafkaAdminClient is not None and NewTopic is not None:
@@ -199,7 +207,6 @@ def _get_kafka():
                     except Exception as e:
                         if TopicAlreadyExistsError is not None and isinstance(e, TopicAlreadyExistsError):
                             continue
-                        # Best-effort: topics might already exist or broker might not support create yet.
                         logger.warning("Kafka topic ensure failed for %s (%s)", topic_name, e)
             finally:
                 try:
@@ -236,14 +243,19 @@ def _extract_float(payload: Dict[str, Any], key: str) -> Optional[float]:
         return None
 
 
+# Track last alarm times to avoid spamming
+_last_alarm_times: Dict[str, datetime] = {}
+ALARM_COOLDOWN_S = 30  # Minimum seconds between alarms for same metric
+
+
 def evaluate_and_alarm(
     *,
     payload: Dict[str, Any],
     thresholds: Thresholds,
     buzzer,
     led,
-    kafka_producer,
-    alarm_topic: str,
+    kafka_producer=None,
+    alarm_topic: str = "alarms.events",
 ) -> Optional[Dict[str, Any]]:
     """Return alarm event dict if triggered."""
     sensor = str(payload.get("sensor") or "unknown")
@@ -258,27 +270,32 @@ def evaluate_and_alarm(
     # CO2 alarm
     co2 = _extract_float(payload, "co2_ppm")
     if co2 is not None and co2 >= thresholds.co2_ppm_critical:
-        event = {
-            "triggered_at": _utc_now().isoformat(),
-            "sensor": sensor,
-            "metric": "co2_ppm",
-            "value": co2,
-            "threshold": thresholds.co2_ppm_critical,
-            "severity": "critical",
-            "message": f"CO2 critical: {co2} ppm (>= {thresholds.co2_ppm_critical})",
-            "recorded_at": ts,
-        }
-        _beep(buzzer, led)
-        kafka_producer.send(alarm_topic, event)
-        store_alarm_event(
-            sensor=sensor,
-            metric="co2_ppm",
-            value=co2,
-            threshold=thresholds.co2_ppm_critical,
-            severity="critical",
-            message=event["message"],
-        )
-        return event
+        alarm_key = f"{sensor}:co2_ppm"
+        last_time = _last_alarm_times.get(alarm_key)
+        if last_time is None or (_utc_now() - last_time).total_seconds() > ALARM_COOLDOWN_S:
+            _last_alarm_times[alarm_key] = _utc_now()
+            event = {
+                "triggered_at": _utc_now().isoformat(),
+                "sensor": sensor,
+                "metric": "co2_ppm",
+                "value": co2,
+                "threshold": thresholds.co2_ppm_critical,
+                "severity": "critical",
+                "message": f"CO2 critical: {co2} ppm (>= {thresholds.co2_ppm_critical})",
+                "recorded_at": ts,
+            }
+            _beep(buzzer, led)
+            if kafka_producer is not None:
+                kafka_producer.send(alarm_topic, event)
+            store_alarm_event(
+                sensor=sensor,
+                metric="co2_ppm",
+                value=co2,
+                threshold=thresholds.co2_ppm_critical,
+                severity="critical",
+                message=event["message"],
+            )
+            return event
 
     # Temperature alarm (prefer temperature_c key, else celsius)
     temp_c = _extract_float(payload, "temperature_c")
@@ -286,75 +303,134 @@ def evaluate_and_alarm(
         temp_c = _extract_float(payload, "celsius")
 
     if temp_c is not None and temp_c >= thresholds.temp_c_critical:
-        event = {
-            "triggered_at": _utc_now().isoformat(),
-            "sensor": sensor,
-            "metric": "temperature_c",
-            "value": temp_c,
-            "threshold": thresholds.temp_c_critical,
-            "severity": "critical",
-            "message": f"Temperature critical: {temp_c} C (>= {thresholds.temp_c_critical})",
-            "recorded_at": ts,
-        }
-        _beep(buzzer, led)
-        kafka_producer.send(alarm_topic, event)
-        store_alarm_event(
-            sensor=sensor,
-            metric="temperature_c",
-            value=temp_c,
-            threshold=thresholds.temp_c_critical,
-            severity="critical",
-            message=event["message"],
-        )
-        return event
+        alarm_key = f"{sensor}:temperature_c"
+        last_time = _last_alarm_times.get(alarm_key)
+        if last_time is None or (_utc_now() - last_time).total_seconds() > ALARM_COOLDOWN_S:
+            _last_alarm_times[alarm_key] = _utc_now()
+            event = {
+                "triggered_at": _utc_now().isoformat(),
+                "sensor": sensor,
+                "metric": "temperature_c",
+                "value": temp_c,
+                "threshold": thresholds.temp_c_critical,
+                "severity": "critical",
+                "message": f"Temperature critical: {temp_c} C (>= {thresholds.temp_c_critical})",
+                "recorded_at": ts,
+            }
+            _beep(buzzer, led)
+            if kafka_producer is not None:
+                kafka_producer.send(alarm_topic, event)
+            store_alarm_event(
+                sensor=sensor,
+                metric="temperature_c",
+                value=temp_c,
+                threshold=thresholds.temp_c_critical,
+                severity="critical",
+                message=event["message"],
+            )
+            return event
 
     # Humidity alarm
     hum = _extract_float(payload, "humidity_rh")
     if hum is not None and hum >= thresholds.humidity_rh_critical:
-        event = {
-            "triggered_at": _utc_now().isoformat(),
-            "sensor": sensor,
-            "metric": "humidity_rh",
-            "value": hum,
-            "threshold": thresholds.humidity_rh_critical,
-            "severity": "critical",
-            "message": f"Humidity critical: {hum}% (>= {thresholds.humidity_rh_critical})",
-            "recorded_at": ts,
-        }
-        _beep(buzzer, led)
-        kafka_producer.send(alarm_topic, event)
-        store_alarm_event(
-            sensor=sensor,
-            metric="humidity_rh",
-            value=hum,
-            threshold=thresholds.humidity_rh_critical,
-            severity="critical",
-            message=event["message"],
-        )
-        return event
+        alarm_key = f"{sensor}:humidity_rh"
+        last_time = _last_alarm_times.get(alarm_key)
+        if last_time is None or (_utc_now() - last_time).total_seconds() > ALARM_COOLDOWN_S:
+            _last_alarm_times[alarm_key] = _utc_now()
+            event = {
+                "triggered_at": _utc_now().isoformat(),
+                "sensor": sensor,
+                "metric": "humidity_rh",
+                "value": hum,
+                "threshold": thresholds.humidity_rh_critical,
+                "severity": "critical",
+                "message": f"Humidity critical: {hum}% (>= {thresholds.humidity_rh_critical})",
+                "recorded_at": ts,
+            }
+            _beep(buzzer, led)
+            if kafka_producer is not None:
+                kafka_producer.send(alarm_topic, event)
+            store_alarm_event(
+                sensor=sensor,
+                metric="humidity_rh",
+                value=hum,
+                threshold=thresholds.humidity_rh_critical,
+                severity="critical",
+                message=event["message"],
+            )
+            return event
 
     return None
 
 
-def run() -> None:
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-
-    # kafka-python can be extremely chatty at INFO when brokers are down.
-    logging.getLogger("kafka").setLevel(logging.WARNING)
-    logging.getLogger("kafka.cluster").setLevel(logging.WARNING)
-    logging.getLogger("kafka.coordinator").setLevel(logging.WARNING)
-
-    thresholds = _get_thresholds()
-    buzzer = _get_buzzer()
-    led = _get_led()
-
+def run_db_polling_mode(thresholds: Thresholds, buzzer, led) -> None:
+    """Poll the database directly for threshold violations."""
+    poll_interval = _env_float("ALARM_POLL_INTERVAL_S", "2")
     logger.info(
-        "Alarm worker starting with thresholds: temp_c=%s, co2_ppm=%s, humidity_rh=%s",
+        "Alarm worker running in DB polling mode (interval=%.1fs). "
+        "Thresholds: temp_c=%s, co2_ppm=%s, humidity_rh=%s",
+        poll_interval,
         thresholds.temp_c_critical,
         thresholds.co2_ppm_critical,
         thresholds.humidity_rh_critical,
     )
 
+    while True:
+        try:
+            # Check SCD40 readings (CO2, temperature, humidity)
+            since = _utc_now() - timedelta(seconds=poll_interval * 2)
+            scd40_rows = fetch_recent_scd40(limit=5, since=since)
+            for row in scd40_rows:
+                evaluate_and_alarm(
+                    payload={
+                        "sensor": "scd40",
+                        "recorded_at": row.get("recorded_at"),
+                        "co2_ppm": row.get("co2_ppm"),
+                        "temperature_c": row.get("temperature_c"),
+                        "humidity_rh": row.get("humidity_rh"),
+                    },
+                    thresholds=thresholds,
+                    buzzer=buzzer,
+                    led=led,
+                )
+
+            # Check DS18B20 readings (temperature only)
+            ds18b20_rows = fetch_recent_ds18b20(limit=5, since=since)
+            for row in ds18b20_rows:
+                evaluate_and_alarm(
+                    payload={
+                        "sensor": "ds18b20",
+                        "recorded_at": row.get("recorded_at"),
+                        "temperature_c": row.get("celsius"),
+                    },
+                    thresholds=thresholds,
+                    buzzer=buzzer,
+                    led=led,
+                )
+
+            # Check MPU6050 readings (temperature only - motion doesn't have thresholds yet)
+            mpu6050_rows = fetch_recent_mpu6050(limit=5, since=since)
+            for row in mpu6050_rows:
+                evaluate_and_alarm(
+                    payload={
+                        "sensor": "mpu6050",
+                        "recorded_at": row.get("recorded_at"),
+                        "temperature_c": row.get("temperature_c"),
+                    },
+                    thresholds=thresholds,
+                    buzzer=buzzer,
+                    led=led,
+                )
+
+        except Exception as e:
+            logger.error("Error polling database for alarms: %s", e)
+            traceback.print_exc()
+
+        time.sleep(poll_interval)
+
+
+def run_kafka_mode(thresholds: Thresholds, buzzer, led) -> None:
+    """Consume sensor readings from Kafka."""
     backoff_s = 1.0
     max_backoff_s = float(os.getenv("KAFKA_RETRY_MAX_S", "30"))
 
@@ -379,17 +455,15 @@ def run() -> None:
                 )
 
         except Exception as e:
-            # If Kafka isn't running, don't crash the whole system.
             is_no_brokers = (
                 NoBrokersAvailable is not None and isinstance(e, NoBrokersAvailable)
             )
             if is_no_brokers:
                 logger.warning(
-                    "Kafka broker not available. Alarm worker is idle (SIMULATED) and will retry in %.1fs.",
+                    "Kafka broker not available. Alarm worker is idle and will retry in %.1fs.",
                     backoff_s,
                 )
             else:
-                # Print full traceback for non-broker errors (env mismatch, auth, etc.)
                 traceback.print_exc()
                 logger.warning(
                     "Alarm worker Kafka error (%s). Will retry in %.1fs.",
@@ -399,6 +473,28 @@ def run() -> None:
 
             time.sleep(backoff_s)
             backoff_s = min(max_backoff_s, backoff_s * 2.0)
+
+
+def run() -> None:
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
+    # kafka-python can be extremely chatty at INFO when brokers are down.
+    logging.getLogger("kafka").setLevel(logging.WARNING)
+    logging.getLogger("kafka.cluster").setLevel(logging.WARNING)
+    logging.getLogger("kafka.coordinator").setLevel(logging.WARNING)
+
+    thresholds = _get_thresholds()
+    buzzer = _get_buzzer()
+    led = _get_led()
+
+    # Choose mode: 'db' polls database directly, 'kafka' uses Kafka consumer
+    mode = os.getenv("ALARM_MODE", "db").lower()
+
+    if mode == "kafka":
+        run_kafka_mode(thresholds, buzzer, led)
+    else:
+        # Default to DB polling mode - works without Kafka
+        run_db_polling_mode(thresholds, buzzer, led)
 
 
 if __name__ == "__main__":
