@@ -15,16 +15,24 @@ import os
 import psycopg2
 
 
+from contextlib import contextmanager
+
+@contextmanager
 def get_connection():
-    """Create a new PostgreSQL connection using env vars."""
+    """Create a new PostgreSQL connection and ensure closure."""
     dsn = os.getenv("DATABASE_URL")
     if dsn:
-        return psycopg2.connect(dsn)
-
-    return psycopg2.connect(
-        host=os.getenv("PGHOST", "localhost"),
-        port=int(os.getenv("PGPORT", "5432")),
-        dbname=os.getenv("PGDATABASE"),
-        user=os.getenv("PGUSER"),
-        password=os.getenv("PGPASSWORD"),
-    )
+        conn = psycopg2.connect(dsn)
+    else:
+        conn = psycopg2.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=int(os.getenv("PGPORT", "5432")),
+            dbname=os.getenv("PGDATABASE"),
+            user=os.getenv("PGUSER"),
+            password=os.getenv("PGPASSWORD"),
+        )
+    
+    try:
+        yield conn
+    finally:
+        conn.close()
