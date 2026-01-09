@@ -156,16 +156,25 @@ def _get_led():
 
 
 def _beep(buzzer, led) -> None:
-    """Activate buzzer and LED for alarm indication."""
-    on_s = _env_float("BUZZER_ON_S", "0.5")
-    off_s = _env_float("BUZZER_OFF_S", "0.5")
-    beeps = _env_int("BUZZER_BEEPS", "3")
-
-    logger.warning("🚨 ALARM TRIGGERED - Activating buzzer and LED (%d beeps)", beeps)
+    """Activate buzzer and LED for alarm indication.
+    
+    Reads timing settings from shared config (controllable from UI).
+    """
+    from controllers.alarm_config import load_config, get_buzzer_timing
+    
+    config = load_config()
+    on_s, off_s, beeps = get_buzzer_timing(config)
+    
+    logger.warning(
+        "🚨 ALARM TRIGGERED - Activating buzzer and LED (%d beeps, %.1fs duration)",
+        beeps,
+        config.buzzer_duration_s,
+    )
 
     for _ in range(beeps):
         buzzer.on()
-        led.on()
+        if config.led_enabled:
+            led.on()
         time.sleep(on_s)
         buzzer.off()
         led.off()

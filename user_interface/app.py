@@ -1,16 +1,18 @@
-"""Streamlit UI for visualizing sensor data stored in PostgreSQL.
+"""InnoMine - The Palantir of Mines
+
+Streamlit UI for mining safety monitoring.
+Real-time sensor data for Unit 1 + simulated data for demonstration.
 
 Run:
     streamlit run user_interface/app.py
-
-The UI reads from the DB via db_interfaces/*_db.py.
-Styled to match InnoMine professional mining dashboard.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import time
+import random
+import math
 
 import altair as alt
 import pandas as pd
@@ -26,329 +28,405 @@ from db_interfaces.scd40_db import fetch_recent_scd40
 # Page Configuration
 # ============================================================================
 st.set_page_config(
-    page_title="InnoMine — Sensor Dashboard",
+    page_title="InnoMine — The Palantir of Mines",
     page_icon="⛏️",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ============================================================================
-# Custom CSS - InnoMine Dark Theme
+# Thresholds
+# ============================================================================
+THRESHOLDS = {
+    "temp_c_critical": 38.0,
+    "co2_ppm_critical": 1000,
+    "humidity_rh_critical": 85,
+    "temp_c_warning": 37.0,
+    "co2_ppm_warning": 800,
+    "humidity_rh_warning": 70,
+}
+
+# ============================================================================
+# Custom CSS - Palantir-style Dark Theme
 # ============================================================================
 st.markdown("""
 <style>
-    /* Import Google Font */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
     
-    /* Root variables */
     :root {
-        --bg-primary: #0f172a;
-        --bg-secondary: #1e293b;
-        --bg-tertiary: #334155;
-        --bg-card: #1e293b;
-        --border-color: rgba(255, 255, 255, 0.1);
-        --text-primary: #f1f5f9;
+        --bg-primary: #0a0e14;
+        --bg-secondary: #111827;
+        --bg-card: #1a1f2e;
+        --bg-card-hover: #252b3d;
+        --border-color: rgba(59, 130, 246, 0.2);
+        --border-glow: rgba(59, 130, 246, 0.4);
+        --text-primary: #e2e8f0;
         --text-secondary: #94a3b8;
         --text-muted: #64748b;
         --accent-blue: #3b82f6;
+        --accent-cyan: #06b6d4;
         --accent-green: #10b981;
         --accent-yellow: #f59e0b;
         --accent-red: #ef4444;
-        --status-safe: #10b981;
-        --status-warning: #f59e0b;
-        --status-danger: #ef4444;
+        --accent-purple: #8b5cf6;
     }
     
-    /* Main app styling */
     .stApp {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: linear-gradient(180deg, #0a0e14 0%, #111827 50%, #0a0e14 100%);
+        font-family: 'Inter', sans-serif;
     }
     
-    /* Header styling */
+    /* Hide Streamlit branding */
+    #MainMenu, footer, header {visibility: hidden;}
+    .stDeployButton {display: none;}
+    
+    /* Main header */
     .main-header {
-        background: rgba(30, 41, 59, 0.95);
-        backdrop-filter: blur(20px);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background: linear-gradient(135deg, rgba(26, 31, 46, 0.95) 0%, rgba(17, 24, 39, 0.95) 100%);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
         padding: 1rem 2rem;
-        margin: -1rem -1rem 2rem -1rem;
+        margin-bottom: 1.5rem;
         display: flex;
         align-items: center;
         justify-content: space-between;
+        box-shadow: 0 0 30px rgba(59, 130, 246, 0.1);
     }
     
     .brand-title {
-        font-size: 1.75rem;
+        font-size: 1.5rem;
         font-weight: 800;
-        color: #f1f5f9;
+        background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
         letter-spacing: -0.025em;
-        margin: 0;
+    }
+    
+    .brand-subtitle {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+    
+    .live-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        color: var(--accent-green);
+        font-weight: 600;
+    }
+    
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        background: var(--accent-green);
+        border-radius: 50%;
+        animation: pulse-live 2s infinite;
+    }
+    
+    @keyframes pulse-live {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+        50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    }
+    
+    /* Panel styling */
+    .panel {
+        background: linear-gradient(135deg, rgba(26, 31, 46, 0.9) 0%, rgba(17, 24, 39, 0.9) 100%);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .panel-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text-primary);
         display: flex;
         align-items: center;
         gap: 0.5rem;
     }
     
-    .clock-display {
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-        font-size: 0.875rem;
-        color: #94a3b8;
-        font-weight: 500;
+    .panel-badge {
+        font-size: 0.65rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+        text-transform: uppercase;
     }
     
-    /* Stat cards */
-    .stat-card {
-        background: #1e293b;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        padding: 1.5rem;
+    .badge-live {
+        background: rgba(16, 185, 129, 0.2);
+        color: var(--accent-green);
+        border: 1px solid var(--accent-green);
+    }
+    
+    .badge-simulated {
+        background: rgba(139, 92, 246, 0.2);
+        color: var(--accent-purple);
+        border: 1px solid var(--accent-purple);
+    }
+    
+    /* Metric grid */
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.75rem;
+    }
+    
+    .metric-item {
+        background: rgba(17, 24, 39, 0.6);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.75rem;
+        text-align: center;
+    }
+    
+    .metric-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    
+    .metric-value.safe { color: var(--accent-green); }
+    .metric-value.warning { color: var(--accent-yellow); }
+    .metric-value.danger { color: var(--accent-red); }
+    
+    .metric-label {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 0.25rem;
+    }
+    
+    .metric-unit {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+    }
+    
+    /* Alert list */
+    .alert-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .alert-item {
         display: flex;
         align-items: center;
-        gap: 1rem;
-        transition: all 0.2s ease;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        background: rgba(17, 24, 39, 0.6);
+        border-radius: 8px;
+        border-left: 3px solid var(--accent-yellow);
     }
     
-    .stat-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.16);
+    .alert-item.critical {
+        border-left-color: var(--accent-red);
+        background: rgba(239, 68, 68, 0.1);
     }
     
-    .stat-icon {
-        font-size: 2rem;
-        opacity: 0.8;
+    .alert-item.warning {
+        border-left-color: var(--accent-yellow);
+        background: rgba(245, 158, 11, 0.1);
     }
     
-    .stat-value {
-        font-size: 2.5rem;
-        font-weight: 800;
-        line-height: 1;
-        color: #f1f5f9;
-        margin-bottom: 0.25rem;
+    .alert-item.info {
+        border-left-color: var(--accent-blue);
+        background: rgba(59, 130, 246, 0.1);
     }
     
-    .stat-label {
-        font-size: 0.875rem;
-        color: #94a3b8;
-        font-weight: 500;
+    .alert-icon {
+        font-size: 1.25rem;
     }
     
-    /* Sensor cards */
-    .sensor-card {
-        background: #1e293b;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+    .alert-content {
+        flex: 1;
+    }
+    
+    .alert-title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    
+    .alert-detail {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+    }
+    
+    .alert-time {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        font-family: 'JetBrains Mono', monospace;
+    }
+    
+    /* Miner card */
+    .miner-card {
+        background: linear-gradient(135deg, rgba(26, 31, 46, 0.95) 0%, rgba(17, 24, 39, 0.95) 100%);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
-        padding: 1.5rem;
+        padding: 1rem;
         position: relative;
         overflow: hidden;
-        transition: all 0.3s ease;
     }
     
-    .sensor-card::before {
+    .miner-card::before {
         content: "";
         position: absolute;
         top: 0;
         left: 0;
         right: 0;
-        height: 4px;
-        background: #10b981;
+        height: 3px;
+        background: linear-gradient(90deg, var(--accent-green), var(--accent-cyan));
     }
     
-    .sensor-card.warning::before {
-        background: #f59e0b;
+    .miner-card.warning::before {
+        background: linear-gradient(90deg, var(--accent-yellow), var(--accent-red));
     }
     
-    .sensor-card.danger::before {
-        background: #ef4444;
-    }
-    
-    .sensor-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
-        border-color: rgba(59, 130, 246, 0.3);
-    }
-    
-    /* Status badges */
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    
-    .status-badge.normal {
-        background: rgba(16, 185, 129, 0.1);
-        color: #10b981;
-    }
-    
-    .status-badge.warning {
-        background: rgba(245, 158, 11, 0.1);
-        color: #f59e0b;
-    }
-    
-    .status-badge.danger {
-        background: rgba(239, 68, 68, 0.1);
-        color: #ef4444;
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-    }
-    
-    /* Metric cards */
-    .metric-card {
-        background: #334155;
-        border-radius: 8px;
-        padding: 1rem;
+    .miner-header {
         display: flex;
         align-items: center;
-        gap: 1rem;
-    }
-    
-    .metric-icon {
-        font-size: 1.5rem;
-        opacity: 0.8;
-    }
-    
-    .metric-value {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #f1f5f9;
-    }
-    
-    .metric-label {
-        font-size: 0.75rem;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        font-weight: 600;
-    }
-    
-    /* Insights panel */
-    .insights-panel {
-        background: #1e293b;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        padding: 1.5rem;
-    }
-    
-    .insight-item {
-        background: #334155;
-        border-radius: 8px;
-        padding: 1rem;
-        border-left: 4px solid #10b981;
+        gap: 0.75rem;
         margin-bottom: 0.75rem;
     }
     
-    .insight-item.warning {
-        border-left-color: #f59e0b;
-    }
-    
-    .insight-item.danger {
-        border-left-color: #ef4444;
-    }
-    
-    .insight-priority {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-        margin-bottom: 0.25rem;
-    }
-    
-    .priority-dot {
-        width: 8px;
-        height: 8px;
+    .miner-avatar {
+        width: 40px;
+        height: 40px;
         border-radius: 50%;
-        background: currentColor;
-    }
-    
-    /* Section headers */
-    .section-header {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #f1f5f9;
-        margin-bottom: 1rem;
+        background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        justify-content: center;
+        font-weight: 700;
+        color: white;
+        font-size: 0.875rem;
     }
     
-    /* Override Streamlit defaults */
-    .stMetric {
-        background: #1e293b;
+    .miner-info h4 {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--text-primary);
+    }
+    
+    .miner-info span {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+    }
+    
+    .miner-status {
+        margin-left: auto;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .miner-status.safe {
+        background: rgba(16, 185, 129, 0.2);
+        color: var(--accent-green);
+    }
+    
+    .miner-status.warning {
+        background: rgba(245, 158, 11, 0.2);
+        color: var(--accent-yellow);
+    }
+    
+    .miner-status.danger {
+        background: rgba(239, 68, 68, 0.2);
+        color: var(--accent-red);
+    }
+    
+    /* Map placeholder */
+    .map-container {
+        background: linear-gradient(135deg, #1a1f2e 0%, #0f1419 100%);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
         padding: 1rem;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
     }
     
-    .stMetric label {
-        color: #94a3b8 !important;
+    .map-grid {
+        position: absolute;
+        inset: 0;
+        background-image: 
+            linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px);
+        background-size: 30px 30px;
     }
     
-    .stMetric [data-testid="stMetricValue"] {
-        color: #f1f5f9 !important;
+    .map-dot {
+        width: 12px;
+        height: 12px;
+        background: var(--accent-green);
+        border-radius: 50%;
+        position: absolute;
+        box-shadow: 0 0 10px var(--accent-green);
+        animation: pulse-dot 2s infinite;
     }
     
-    /* Sidebar styling */
+    .map-dot.warning {
+        background: var(--accent-yellow);
+        box-shadow: 0 0 10px var(--accent-yellow);
+    }
+    
+    @keyframes pulse-dot {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.3); }
+    }
+    
+    /* Sidebar */
     [data-testid="stSidebar"] {
-        background: #1e293b;
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        background: #111827;
     }
     
-    [data-testid="stSidebar"] .stMarkdown {
-        color: #f1f5f9;
-    }
-    
-    /* Fix text colors */
-    .stMarkdown, .stText, p, span, label {
-        color: #f1f5f9;
-    }
-    
-    h1, h2, h3, h4, h5, h6 {
-        color: #f1f5f9 !important;
-    }
-    
-    /* Divider */
-    hr {
-        border-color: rgba(255, 255, 255, 0.1);
-    }
+    /* Override text colors */
+    .stMarkdown, p, span, label { color: var(--text-primary); }
+    h1, h2, h3, h4 { color: var(--text-primary) !important; }
     
     /* Charts */
     .stAltairChart {
-        background: #1e293b;
-        border-radius: 12px;
-        padding: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: transparent !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ============================================================================
-# Thresholds (matching alarm_worker.py)
+# Helper Functions
 # ============================================================================
-THRESHOLDS = {
-    "temp_c_critical": 38.0,  # Human body fever threshold
-    "co2_ppm_critical": 1000,  # Soda can CO2 detection
-    "humidity_rh_critical": 85,  # High humidity
-    "temp_c_warning": 37.0,
-    "co2_ppm_warning": 800,
-    "humidity_rh_warning": 70,
-}
-
-
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
 def get_status(value: float, metric: str) -> str:
-    """Get status level based on thresholds."""
     if metric == "temperature_c":
         if value >= THRESHOLDS["temp_c_critical"]:
             return "danger"
@@ -364,360 +442,450 @@ def get_status(value: float, metric: str) -> str:
             return "danger"
         elif value >= THRESHOLDS["humidity_rh_warning"]:
             return "warning"
-    return "normal"
+    return "safe"
 
 
-def get_status_emoji(status: str) -> str:
-    return {"normal": "🟢", "warning": "🟡", "danger": "🔴"}.get(status, "⚪")
+def simulate_miner_data(miner_id: int, real_sensor_data: dict = None) -> dict:
+    """Generate simulated miner data, optionally using real sensor values."""
+    t = time.time() + miner_id * 100  # Offset for variety
+    
+    # Simulated vital signs
+    heart_rate = 72 + int(15 * math.sin(t / 30)) + random.randint(-5, 5)
+    body_temp = 36.5 + 0.5 * math.sin(t / 60) + random.uniform(-0.2, 0.2)
+    
+    # Use real environmental data if available for miner 1
+    if real_sensor_data and miner_id == 1:
+        co2 = real_sensor_data.get("co2_ppm", 450)
+        env_temp = real_sensor_data.get("temperature_c", 24)
+        humidity = real_sensor_data.get("humidity_rh", 45)
+        is_real = True
+    else:
+        co2 = 400 + 100 * math.sin(t / 45) + random.randint(-20, 20)
+        env_temp = 22 + 3 * math.sin(t / 50) + random.uniform(-1, 1)
+        humidity = 45 + 10 * math.sin(t / 40) + random.uniform(-3, 3)
+        is_real = False
+    
+    # Simulated motion/acceleration
+    if real_sensor_data and miner_id == 1 and "accel_x_g" in real_sensor_data:
+        motion = abs(real_sensor_data.get("accel_x_g", 0)) + abs(real_sensor_data.get("accel_y_g", 0))
+    else:
+        motion = 0.1 + 0.2 * abs(math.sin(t / 10)) + random.uniform(0, 0.1)
+    
+    # Simulated location
+    locations = ["Section A - Shaft 1", "Section B - Tunnel 2", "Section C - Main Gallery", "Section D - Extraction"]
+    
+    return {
+        "id": miner_id,
+        "name": f"Worker {miner_id:03d}",
+        "location": locations[(miner_id - 1) % len(locations)],
+        "shift": "Day" if datetime.now().hour < 18 else "Night",
+        "heart_rate": heart_rate,
+        "body_temp": body_temp,
+        "co2_ppm": co2,
+        "env_temp": env_temp,
+        "humidity": humidity,
+        "motion": motion,
+        "battery": max(15, 100 - (miner_id * 10) - random.randint(0, 20)),
+        "is_real_data": is_real,
+        "last_update": datetime.now(),
+    }
+
+
+def generate_simulated_alerts() -> list:
+    """Generate simulated alerts for demonstration."""
+    alerts = [
+        {
+            "type": "critical",
+            "icon": "🔴",
+            "title": "GAS LEAK - SECTION A2",
+            "detail": "CO2 levels exceeding threshold in tunnel A2",
+            "time": "2 min ago",
+            "simulated": True,
+        },
+        {
+            "type": "warning",
+            "icon": "🟡",
+            "title": "EQUIPMENT MALFUNCTION - CRUSHER 5",
+            "detail": "Abnormal vibration detected",
+            "time": "5 min ago",
+            "simulated": True,
+        },
+        {
+            "type": "warning",
+            "icon": "🟡",
+            "title": "PERSONNEL PROXIMITY WARNING",
+            "detail": "Worker 003 near restricted zone",
+            "time": "8 min ago",
+            "simulated": True,
+        },
+        {
+            "type": "info",
+            "icon": "🔵",
+            "title": "SHIFT CHANGE REMINDER",
+            "detail": "Night shift begins in 30 minutes",
+            "time": "12 min ago",
+            "simulated": True,
+        },
+    ]
+    return alerts
 
 
 # ============================================================================
-# Header
+# Fetch Real Sensor Data
 # ============================================================================
-st.markdown("""
-<div class="main-header">
-    <h1 class="brand-title">⛏️ InnoMine</h1>
-    <div class="clock-display">""" + datetime.now().strftime('%H:%M:%S') + """</div>
-</div>
-""", unsafe_allow_html=True)
+def get_real_sensor_data() -> dict:
+    """Fetch the latest real sensor data from database."""
+    data = {}
+    
+    try:
+        since = _utc_now() - timedelta(minutes=5)
+        
+        # SCD40 - CO2, temp, humidity
+        scd40_rows = fetch_recent_scd40(limit=1, since=since)
+        if scd40_rows:
+            latest = scd40_rows[0]
+            data["co2_ppm"] = latest.get("co2_ppm")
+            data["temperature_c"] = latest.get("temperature_c")
+            data["humidity_rh"] = latest.get("humidity_rh")
+            data["scd40_timestamp"] = latest.get("recorded_at")
+        
+        # DS18B20 - Temperature
+        ds18b20_rows = fetch_recent_ds18b20(limit=1, since=since)
+        if ds18b20_rows:
+            latest = ds18b20_rows[0]
+            data["ds18b20_temp"] = latest.get("celsius")
+            data["ds18b20_timestamp"] = latest.get("recorded_at")
+        
+        # MPU6050 - Motion
+        mpu6050_rows = fetch_recent_mpu6050(limit=1, since=since)
+        if mpu6050_rows:
+            latest = mpu6050_rows[0]
+            data["accel_x_g"] = latest.get("accel_x_g")
+            data["accel_y_g"] = latest.get("accel_y_g")
+            data["accel_z_g"] = latest.get("accel_z_g")
+            data["mpu6050_timestamp"] = latest.get("recorded_at")
+    
+    except Exception as e:
+        st.warning(f"Could not fetch sensor data: {e}")
+    
+    return data
+
 
 # ============================================================================
-# Sidebar Controls
+# UI Components
 # ============================================================================
-with st.sidebar:
-    st.markdown("### ⚙️ Controls")
-    
-    dataset = st.selectbox(
-        "📊 Dataset",
-        ["SCD40 (CO₂/Temp/Humidity)", "DS18B20 (Temperature)", "MPU6050 (Motion)", "Alarms"],
-        index=0,
-        key="dataset",
-    )
-    
-    st.divider()
-    
-    limit = st.slider("📈 Rows to load", min_value=50, max_value=5000, value=500, step=50)
-    lookback_h = st.slider(
-        "⏰ Lookback (hours)",
-        min_value=1,
-        max_value=48,
-        value=6,
-        step=1,
-        help="Dashboard queries only rows newer than now - lookback.",
-    )
-    
-    st.divider()
-    
-    auto_refresh = st.checkbox("🔄 Auto-refresh", value=True)
-    refresh_s = st.slider(
-        "Refresh interval (seconds)", min_value=1, max_value=30, value=2, step=1
-    )
-    
-    st.divider()
-    
-    st.markdown("### 🚨 Alarm Thresholds")
+def render_header():
     st.markdown(f"""
-    - **Temperature**: {THRESHOLDS['temp_c_critical']}°C (critical)
-    - **CO₂**: {THRESHOLDS['co2_ppm_critical']} ppm (critical)
-    - **Humidity**: {THRESHOLDS['humidity_rh_critical']}% (critical)
-    """)
+    <div class="main-header">
+        <div>
+            <div class="brand-title">⛏️ InnoMine</div>
+            <div class="brand-subtitle">The Palantir of Mines</div>
+        </div>
+        <div style="text-align: center;">
+            <div style="font-size: 1.5rem; font-weight: 700; color: #e2e8f0; font-family: 'JetBrains Mono', monospace;">
+                {datetime.now().strftime('%H:%M:%S')}
+            </div>
+            <div style="font-size: 0.7rem; color: #64748b;">{datetime.now().strftime('%Y-%m-%d')}</div>
+        </div>
+        <div class="live-indicator">
+            <div class="live-dot"></div>
+            LIVE
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
-# ============================================================================
-# Helper Functions
-# ============================================================================
-def _prepare(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    df = df.sort_values("recorded_at")
-    return df
-
-
-def _show_simulated_banner(df: pd.DataFrame) -> None:
-    if df.empty or "is_simulated" not in df.columns:
-        return
-    simulated_count = int(df["is_simulated"].fillna(False).sum())
-    if simulated_count > 0:
-        st.warning(
-            f"⚠️ Some readings are SIMULATED (device missing). Rows simulated: {simulated_count}."
-        )
-
-
-def _line_chart(df: pd.DataFrame, x: str, y: str, title: str, color: str = "#10b981"):
-    """Create a styled line chart."""
-    line = alt.Chart(df).mark_line(strokeWidth=4, color=color).encode(
-        x=alt.X(x, title="Time", axis=alt.Axis(labelColor="#94a3b8", titleColor="#f1f5f9")),
-        y=alt.Y(y, title=y, scale=alt.Scale(zero=False), axis=alt.Axis(labelColor="#94a3b8", titleColor="#f1f5f9")),
-    )
-    points = alt.Chart(df).mark_circle(size=60, color=color).encode(
-        x=alt.X(x),
-        y=alt.Y(y),
-        tooltip=[x, y],
-    )
-    c = (line + points).properties(
-        title=alt.TitleParams(text=title, color="#f1f5f9", fontSize=16, fontWeight="bold"),
-        height=350,
-        background="#1e293b",
-    ).configure_view(
-        strokeWidth=0,
-    ).interactive()
-    st.altair_chart(c, use_container_width=True)
-
-
-def render_stat_cards(stats: list):
-    """Render statistics cards."""
-    cols = st.columns(len(stats))
-    for col, stat in zip(cols, stats):
-        with col:
+def render_site_health_panel(real_data: dict, miners: list):
+    """Render the Real-Time Site Health panel."""
+    st.markdown("""
+    <div class="panel">
+        <div class="panel-header">
+            <div class="panel-title">📊 Real-Time Site Health</div>
+            <span class="panel-badge badge-live">LIVE</span>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Calculate aggregates
+    avg_co2 = sum(m["co2_ppm"] for m in miners) / len(miners)
+    avg_temp = sum(m["env_temp"] for m in miners) / len(miners)
+    avg_humidity = sum(m["humidity"] for m in miners) / len(miners)
+    active_miners = len(miners)
+    alerts_count = sum(1 for m in miners if get_status(m["co2_ppm"], "co2_ppm") != "safe")
+    
+    st.markdown(f"""
+        <div class="metric-grid">
+            <div class="metric-item">
+                <div class="metric-value">{active_miners}</div>
+                <div class="metric-label">Active Workers</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value {get_status(avg_co2, 'co2_ppm')}">{avg_co2:.0f}</div>
+                <div class="metric-label">Avg CO₂ <span class="metric-unit">ppm</span></div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value {get_status(avg_temp, 'temperature_c')}">{avg_temp:.1f}°</div>
+                <div class="metric-label">Avg Temp <span class="metric-unit">°C</span></div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value">{avg_humidity:.0f}%</div>
+                <div class="metric-label">Humidity</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value {'danger' if alerts_count > 0 else 'safe'}">{alerts_count}</div>
+                <div class="metric-label">Active Alerts</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value safe">98%</div>
+                <div class="metric-label">Site Safety</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Real sensor data card for Unit 1
+    if real_data:
+        st.markdown("""
+        <div class="panel" style="border-color: rgba(16, 185, 129, 0.4);">
+            <div class="panel-header">
+                <div class="panel-title">🎯 Unit 1 - Live Sensor Data</div>
+                <span class="panel-badge badge-live">REAL DATA</span>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        cols = st.columns(4)
+        
+        with cols[0]:
+            co2 = real_data.get("co2_ppm", "N/A")
+            co2_status = get_status(co2, "co2_ppm") if isinstance(co2, (int, float)) else "safe"
             st.markdown(f"""
-            <div class="stat-card">
-                <div class="stat-icon">{stat['icon']}</div>
-                <div>
-                    <div class="stat-value">{stat['value']}</div>
-                    <div class="stat-label">{stat['label']}</div>
-                </div>
+            <div class="metric-item">
+                <div class="metric-value {co2_status}">{co2:.0f if isinstance(co2, float) else co2}</div>
+                <div class="metric-label">CO₂ <span class="metric-unit">ppm</span></div>
             </div>
             """, unsafe_allow_html=True)
-
-
-def render_insights(alerts: list):
-    """Render AI insights panel."""
-    st.markdown('<div class="section-header">🤖 AI Insights & Recommendations</div>', unsafe_allow_html=True)
-    
-    if not alerts:
-        st.markdown("""
-        <div class="insight-item">
-            <div class="insight-priority" style="color: #10b981;">
-                <span class="priority-dot"></span>
-                <span>All Systems Normal</span>
+        
+        with cols[1]:
+            temp = real_data.get("temperature_c", "N/A")
+            temp_status = get_status(temp, "temperature_c") if isinstance(temp, (int, float)) else "safe"
+            st.markdown(f"""
+            <div class="metric-item">
+                <div class="metric-value {temp_status}">{temp:.1f if isinstance(temp, float) else temp}°</div>
+                <div class="metric-label">Temperature <span class="metric-unit">°C</span></div>
             </div>
-            <p style="color: #94a3b8; margin: 0;">All sensors operating within safe parameters. Continue standard monitoring.</p>
+            """, unsafe_allow_html=True)
+        
+        with cols[2]:
+            hum = real_data.get("humidity_rh", "N/A")
+            st.markdown(f"""
+            <div class="metric-item">
+                <div class="metric-value">{hum:.1f if isinstance(hum, float) else hum}%</div>
+                <div class="metric-label">Humidity</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with cols[3]:
+            accel = real_data.get("accel_x_g", "N/A")
+            st.markdown(f"""
+            <div class="metric-item">
+                <div class="metric-value">{accel:.3f if isinstance(accel, float) else accel}</div>
+                <div class="metric-label">Motion <span class="metric-unit">g</span></div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_alerts_panel(alerts: list, db_alarms: list):
+    """Render the AI-Prioritized Alerts panel."""
+    st.markdown("""
+    <div class="panel">
+        <div class="panel-header">
+            <div class="panel-title">🚨 AI-Prioritized Alerts</div>
+            <span class="panel-badge badge-simulated">DEMO</span>
+        </div>
+        <div class="alert-list">
+    """, unsafe_allow_html=True)
+    
+    # Add real DB alarms at the top
+    for alarm in db_alarms[:3]:
+        st.markdown(f"""
+        <div class="alert-item critical">
+            <div class="alert-icon">🔴</div>
+            <div class="alert-content">
+                <div class="alert-title">{alarm.get('metric', 'ALERT').upper()} - {alarm.get('sensor', 'SENSOR').upper()}</div>
+                <div class="alert-detail">{alarm.get('message', 'Threshold exceeded')}</div>
+            </div>
+            <div class="alert-time">{alarm.get('triggered_at', datetime.now()).strftime('%H:%M') if hasattr(alarm.get('triggered_at'), 'strftime') else 'Now'}</div>
         </div>
         """, unsafe_allow_html=True)
-    else:
-        for alert in alerts[:3]:
-            status_class = alert.get("status", "warning")
+    
+    # Simulated alerts
+    for alert in alerts:
+        st.markdown(f"""
+        <div class="alert-item {alert['type']}">
+            <div class="alert-icon">{alert['icon']}</div>
+            <div class="alert-content">
+                <div class="alert-title">{alert['title']} <span style="color: #8b5cf6; font-size: 0.6rem;">[SIM]</span></div>
+                <div class="alert-detail">{alert['detail']}</div>
+            </div>
+            <div class="alert-time">{alert['time']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("""
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_mine_map_panel(miners: list):
+    """Render the Geospatial Mine Twin Map panel."""
+    st.markdown("""
+    <div class="panel">
+        <div class="panel-header">
+            <div class="panel-title">🗺️ Geospatial Mine Twin Map</div>
+            <span class="panel-badge badge-simulated">SIMULATED</span>
+        </div>
+        <div class="map-container">
+            <div class="map-grid"></div>
+    """, unsafe_allow_html=True)
+    
+    # Add dots for miners at pseudo-random positions
+    for i, miner in enumerate(miners):
+        x = 20 + (i % 4) * 60 + random.randint(-10, 10)
+        y = 30 + (i // 4) * 50 + random.randint(-10, 10)
+        status = "warning" if get_status(miner["co2_ppm"], "co2_ppm") != "safe" else ""
+        st.markdown(f"""
+            <div class="map-dot {status}" style="left: {x}%; top: {y}%;" title="{miner['name']}"></div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("""
+            <div style="color: #64748b; font-size: 0.8rem; z-index: 10;">
+                🟢 Workers are displayed as dots • Locations are simulated
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_workers_panel(miners: list):
+    """Render the workers overview panel."""
+    st.markdown("""
+    <div class="panel">
+        <div class="panel-header">
+            <div class="panel-title">👷 Active Workers</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    cols = st.columns(2)
+    for i, miner in enumerate(miners[:4]):
+        with cols[i % 2]:
+            status = get_status(miner["co2_ppm"], "co2_ppm")
+            badge_text = "LIVE" if miner["is_real_data"] else "SIM"
+            badge_class = "badge-live" if miner["is_real_data"] else "badge-simulated"
+            
             st.markdown(f"""
-            <div class="insight-item {status_class}">
-                <div class="insight-priority" style="color: {'#ef4444' if status_class == 'danger' else '#f59e0b'};">
-                    <span class="priority-dot"></span>
-                    <span>{alert['title']}</span>
+            <div class="miner-card {'warning' if status != 'safe' else ''}">
+                <div class="miner-header">
+                    <div class="miner-avatar">{miner['name'][0]}{miner['id']}</div>
+                    <div class="miner-info">
+                        <h4>{miner['name']} <span class="panel-badge {badge_class}">{badge_text}</span></h4>
+                        <span>{miner['location']}</span>
+                    </div>
+                    <div class="miner-status {status}">{status.upper()}</div>
                 </div>
-                <p style="color: #94a3b8; margin: 0;">{alert['message']}</p>
+                <div class="metric-grid">
+                    <div class="metric-item">
+                        <div class="metric-value">{miner['heart_rate']}</div>
+                        <div class="metric-label">BPM</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value">{miner['body_temp']:.1f}°</div>
+                        <div class="metric-label">Body Temp</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value {status}">{miner['co2_ppm']:.0f}</div>
+                        <div class="metric-label">CO₂</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value">{miner['battery']}%</div>
+                        <div class="metric-label">Battery</div>
+                    </div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
 
 # ============================================================================
-# Sensor Views
+# Main App
 # ============================================================================
-def show_scd40():
-    since = _utc_now() - timedelta(hours=int(lookback_h))
-    rows = fetch_recent_scd40(limit=limit, since=since)
-    df = pd.DataFrame(rows)
-    
-    if df.empty:
-        st.info("📭 No SCD40 data yet.")
-        return
 
-    df = _prepare(df)
-    _show_simulated_banner(df)
+# Fetch real sensor data
+real_sensor_data = get_real_sensor_data()
+
+# Generate miner data (1 real + 3 simulated)
+miners = [simulate_miner_data(i, real_sensor_data if i == 1 else None) for i in range(1, 5)]
+
+# Fetch real alarms from DB
+try:
+    db_alarms = fetch_recent_alarms(limit=5, since=_utc_now() - timedelta(hours=1))
+except:
+    db_alarms = []
+
+# Generate simulated alerts
+simulated_alerts = generate_simulated_alerts()
+
+# Render UI
+render_header()
+
+# Three-column layout matching the reference
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    render_site_health_panel(real_sensor_data, miners)
+    render_workers_panel(miners)
+
+with col2:
+    render_alerts_panel(simulated_alerts, db_alarms)
+    render_mine_map_panel(miners)
+
+# Sidebar controls
+with st.sidebar:
+    st.markdown("### ⚙️ Settings")
     
-    latest = df.iloc[-1]
+    auto_refresh = st.checkbox("🔄 Auto-refresh", value=True)
+    refresh_s = st.slider("Refresh interval", 1, 10, 2)
     
-    # Determine statuses
-    co2_status = get_status(latest['co2_ppm'], "co2_ppm")
-    temp_status = get_status(latest['temperature_c'], "temperature_c")
-    hum_status = get_status(latest['humidity_rh'], "humidity_rh")
+    st.divider()
     
-    # Overall status
-    statuses = [co2_status, temp_status, hum_status]
-    overall = "danger" if "danger" in statuses else ("warning" if "warning" in statuses else "normal")
+    st.markdown("### 📊 Data Status")
+    if real_sensor_data:
+        st.success("✅ Live sensor data connected")
+    else:
+        st.warning("⚠️ No live sensor data")
     
-    # Stats bar
-    render_stat_cards([
-        {"icon": "💨", "value": f"{latest['co2_ppm']:.0f}", "label": "CO₂ (ppm)"},
-        {"icon": "🌡️", "value": f"{latest['temperature_c']:.1f}°C", "label": "Temperature"},
-        {"icon": "💧", "value": f"{latest['humidity_rh']:.1f}%", "label": "Humidity"},
-        {"icon": get_status_emoji(overall), "value": overall.upper(), "label": "Status"},
-    ])
+    st.info("ℹ️ Workers 2-4 use simulated data")
     
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.divider()
     
-    # Charts
-    col1, col2 = st.columns(2)
-    with col1:
-        color = "#ef4444" if co2_status == "danger" else ("#f59e0b" if co2_status == "warning" else "#10b981")
-        _line_chart(df, "recorded_at", "co2_ppm", "CO₂ Concentration (ppm)", color)
-    with col2:
-        color = "#ef4444" if temp_status == "danger" else ("#f59e0b" if temp_status == "warning" else "#3b82f6")
-        _line_chart(df, "recorded_at", "temperature_c", "Temperature (°C)", color)
-    
-    col3, col4 = st.columns(2)
-    with col3:
-        color = "#ef4444" if hum_status == "danger" else ("#f59e0b" if hum_status == "warning" else "#06b6d4")
-        _line_chart(df, "recorded_at", "humidity_rh", "Humidity (%RH)", color)
-    with col4:
-        # Generate insights
-        alerts = []
-        if co2_status == "danger":
-            alerts.append({"status": "danger", "title": "CO₂ Critical", "message": f"CO₂ at {latest['co2_ppm']:.0f} ppm exceeds {THRESHOLDS['co2_ppm_critical']} ppm threshold. Check ventilation."})
-        if temp_status == "danger":
-            alerts.append({"status": "danger", "title": "Temperature Critical", "message": f"Temperature at {latest['temperature_c']:.1f}°C exceeds {THRESHOLDS['temp_c_critical']}°C threshold. Heat stress risk."})
-        if hum_status == "danger":
-            alerts.append({"status": "danger", "title": "Humidity Critical", "message": f"Humidity at {latest['humidity_rh']:.1f}% exceeds {THRESHOLDS['humidity_rh_critical']}% threshold."})
-        if co2_status == "warning":
-            alerts.append({"status": "warning", "title": "Elevated CO₂", "message": f"CO₂ at {latest['co2_ppm']:.0f} ppm - approaching critical levels."})
-        if temp_status == "warning":
-            alerts.append({"status": "warning", "title": "Elevated Temperature", "message": f"Temperature at {latest['temperature_c']:.1f}°C - monitor closely."})
+    st.markdown("### 🔔 Buzzer Controls")
+    import sys
+    sys.path.insert(0, "/Users/jabirnahari/Desktop/Programming_Projects/Innomine")
+    try:
+        from controllers.alarm_config import AlarmConfig, load_config, save_config
+        config = load_config()
         
-        render_insights(alerts)
-    
-    st.divider()
-    st.markdown('<div class="section-header">📋 Recent Data</div>', unsafe_allow_html=True)
-    st.dataframe(df.tail(50), use_container_width=True)
+        duration = st.slider("Duration (s)", 1.0, 10.0, config.buzzer_duration_s, 0.5)
+        beeps = st.slider("Beeps", 1, 10, config.buzzer_beeps)
+        led = st.checkbox("LED Enabled", config.led_enabled)
+        
+        if duration != config.buzzer_duration_s or beeps != config.buzzer_beeps or led != config.led_enabled:
+            save_config(AlarmConfig(duration, beeps, 1.0, led))
+    except Exception as e:
+        st.error(f"Config error: {e}")
 
-
-def show_ds18b20():
-    since = _utc_now() - timedelta(hours=int(lookback_h))
-    rows = fetch_recent_ds18b20(limit=limit, since=since)
-    df = pd.DataFrame(rows)
-    
-    if df.empty:
-        st.info("📭 No DS18B20 data yet.")
-        return
-
-    df = df.rename(columns={"celsius": "temperature_c", "fahrenheit": "temperature_f"})
-    df = _prepare(df)
-    _show_simulated_banner(df)
-    
-    latest = df.iloc[-1]
-    temp_status = get_status(latest['temperature_c'], "temperature_c")
-    
-    render_stat_cards([
-        {"icon": "🌡️", "value": f"{latest['temperature_c']:.1f}°C", "label": "Temperature (C)"},
-        {"icon": "🌡️", "value": f"{latest['temperature_f']:.1f}°F", "label": "Temperature (F)"},
-        {"icon": get_status_emoji(temp_status), "value": temp_status.upper(), "label": "Status"},
-        {"icon": "🕐", "value": latest['recorded_at'].strftime('%H:%M:%S'), "label": "Last Reading"},
-    ])
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    color = "#ef4444" if temp_status == "danger" else ("#f59e0b" if temp_status == "warning" else "#3b82f6")
-    _line_chart(df, "recorded_at", "temperature_c", "DS18B20 Temperature (°C)", color)
-    
-    alerts = []
-    if temp_status == "danger":
-        alerts.append({"status": "danger", "title": "Temperature Critical", "message": f"Temperature at {latest['temperature_c']:.1f}°C exceeds threshold."})
-    elif temp_status == "warning":
-        alerts.append({"status": "warning", "title": "Elevated Temperature", "message": f"Temperature at {latest['temperature_c']:.1f}°C - monitor closely."})
-    render_insights(alerts)
-    
-    st.divider()
-    st.markdown('<div class="section-header">📋 Recent Data</div>', unsafe_allow_html=True)
-    st.dataframe(df.tail(50), use_container_width=True)
-
-
-def show_mpu6050():
-    since = _utc_now() - timedelta(hours=int(lookback_h))
-    rows = fetch_recent_mpu6050(limit=limit, since=since)
-    df = pd.DataFrame(rows)
-    
-    if df.empty:
-        st.info("📭 No MPU6050 data yet.")
-        return
-
-    df = _prepare(df)
-    _show_simulated_banner(df)
-    
-    latest = df.iloc[-1]
-    
-    render_stat_cards([
-        {"icon": "📐", "value": f"{latest['accel_x_g']:.3f}g", "label": "Accel X"},
-        {"icon": "📐", "value": f"{latest['accel_y_g']:.3f}g", "label": "Accel Y"},
-        {"icon": "📐", "value": f"{latest['accel_z_g']:.3f}g", "label": "Accel Z"},
-        {"icon": "🌡️", "value": f"{latest['temperature_c']:.1f}°C", "label": "Temperature"},
-    ])
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        axis = st.selectbox("Accel axis", ["accel_x_g", "accel_y_g", "accel_z_g"], key="mpu_accel")
-        _line_chart(df, "recorded_at", axis, f"Acceleration ({axis})", "#8b5cf6")
-    with col2:
-        axis = st.selectbox("Gyro axis", ["gyro_x_dps", "gyro_y_dps", "gyro_z_dps"], key="mpu_gyro")
-        _line_chart(df, "recorded_at", axis, f"Gyroscope ({axis})", "#ec4899")
-    
-    render_insights([])
-    
-    st.divider()
-    st.markdown('<div class="section-header">📋 Recent Data</div>', unsafe_allow_html=True)
-    st.dataframe(df.tail(50), use_container_width=True)
-
-
-def show_alarms():
-    since = _utc_now() - timedelta(hours=int(lookback_h))
-    rows = fetch_recent_alarms(limit=min(limit, 500), since=since)
-    df = pd.DataFrame(rows)
-    
-    alarm_count = len(df) if not df.empty else 0
-    
-    render_stat_cards([
-        {"icon": "🚨", "value": str(alarm_count), "label": "Total Alarms"},
-        {"icon": "⏰", "value": f"{lookback_h}h", "label": "Time Window"},
-        {"icon": "🔴" if alarm_count > 0 else "🟢", "value": "ACTIVE" if alarm_count > 0 else "CLEAR", "label": "Alert Status"},
-    ])
-    
-    if df.empty:
-        st.info("✅ No alarms in the selected time window.")
-        render_insights([])
-        return
-
-    df = df.sort_values("triggered_at")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="section-header">🚨 Alarm Events</div>', unsafe_allow_html=True)
-    st.dataframe(df.tail(200), use_container_width=True)
-
-    if "metric" in df.columns:
-        metric = st.selectbox(
-            "Filter by Metric",
-            sorted(df["metric"].dropna().unique().tolist()),
-            key="alarm_metric",
-        )
-        sub = df[df["metric"] == metric]
-        if not sub.empty and "value" in sub.columns:
-            c = (
-                alt.Chart(sub)
-                .mark_line(strokeWidth=4, color="#ef4444")
-                .encode(
-                    x=alt.X("triggered_at", title="Time"),
-                    y=alt.Y("value", title="Value"),
-                    color=alt.Color("sensor", title="Sensor"),
-                )
-                .properties(title=f"Alarm Values: {metric}", height=350)
-                .interactive()
-            )
-            st.altair_chart(c, use_container_width=True)
-
-
-# ============================================================================
-# Main Routing
-# ============================================================================
-if "SCD40" in dataset:
-    show_scd40()
-elif "DS18B20" in dataset:
-    show_ds18b20()
-elif "MPU6050" in dataset:
-    show_mpu6050()
-else:
-    show_alarms()
-
-
-# ============================================================================
 # Auto-refresh
-# ============================================================================
 if auto_refresh:
     time.sleep(float(refresh_s))
     st.rerun()
