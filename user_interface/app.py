@@ -23,7 +23,9 @@ from db_interfaces.scd40_db import fetch_recent_scd40
 
 st.set_page_config(page_title="Innomine Sensors", layout="wide")
 
+# Show last updated timestamp
 st.title("Innomine – Sensor Dashboard")
+st.caption(f"🕐 Last updated: {datetime.now().strftime('%H:%M:%S')}")
 
 with st.sidebar:
     st.header("Controls")
@@ -42,9 +44,9 @@ with st.sidebar:
         step=1,
         help="Dashboard queries only rows newer than now - lookback.",
     )
-    auto_refresh = st.checkbox("Auto-refresh", value=False)
+    auto_refresh = st.checkbox("Auto-refresh", value=True)
     refresh_s = st.slider(
-        "Refresh interval (seconds)", min_value=1, max_value=30, value=5, step=1
+        "Refresh interval (seconds)", min_value=1, max_value=30, value=2, step=1
     )
 
 
@@ -53,12 +55,17 @@ def _utc_now() -> datetime:
 
 
 def _line_chart(df: pd.DataFrame, x: str, y: str, title: str):
-    c = (
-        alt.Chart(df)
-        .mark_line(strokeWidth=3)
-        .encode(x=alt.X(x, title="Time"), y=alt.Y(y, title=y))
-        .properties(title=title, height=360)
+    """Create a line chart with thicker lines and visible data points."""
+    line = alt.Chart(df).mark_line(strokeWidth=4, color="#4CAF50").encode(
+        x=alt.X(x, title="Time"),
+        y=alt.Y(y, title=y, scale=alt.Scale(zero=False)),
     )
+    points = alt.Chart(df).mark_circle(size=60, color="#2E7D32").encode(
+        x=alt.X(x),
+        y=alt.Y(y),
+        tooltip=[x, y],
+    )
+    c = (line + points).properties(title=title, height=400).interactive()
     st.altair_chart(c, use_container_width=True)
 
 
@@ -90,6 +97,17 @@ def show_scd40():
     df = _prepare(df)
     _show_simulated_banner(df)
 
+    # Show latest values as metrics
+    latest = df.iloc[-1] if not df.empty else None
+    if latest is not None:
+        st.subheader("📊 Current Readings")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("CO₂", f"{latest['co2_ppm']:.0f} ppm")
+        m2.metric("Temperature", f"{latest['temperature_c']:.1f} °C")
+        m3.metric("Humidity", f"{latest['humidity_rh']:.1f} %RH")
+        m4.metric("Last Reading", latest['recorded_at'].strftime('%H:%M:%S'))
+        st.divider()
+
     col1, col2 = st.columns(2)
     with col1:
         _line_chart(df, "recorded_at", "co2_ppm", "CO2 (ppm)")
@@ -119,6 +137,16 @@ def show_ds18b20():
     df = _prepare(df)
     _show_simulated_banner(df)
 
+    # Show latest values as metrics
+    latest = df.iloc[-1] if not df.empty else None
+    if latest is not None:
+        st.subheader("📊 Current Readings")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Temperature", f"{latest['temperature_c']:.1f} °C")
+        m2.metric("Fahrenheit", f"{latest['temperature_f']:.1f} °F")
+        m3.metric("Last Reading", latest['recorded_at'].strftime('%H:%M:%S'))
+        st.divider()
+
     unit = st.selectbox(
         "Temperature unit",
         ["temperature_c", "temperature_f"],
@@ -141,6 +169,22 @@ def show_mpu6050():
 
     df = _prepare(df)
     _show_simulated_banner(df)
+
+    # Show latest values as metrics
+    latest = df.iloc[-1] if not df.empty else None
+    if latest is not None:
+        st.subheader("📊 Current Readings")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Accel X", f"{latest['accel_x_g']:.3f} g")
+        m2.metric("Accel Y", f"{latest['accel_y_g']:.3f} g")
+        m3.metric("Accel Z", f"{latest['accel_z_g']:.3f} g")
+        m4.metric("Temperature", f"{latest['temperature_c']:.1f} °C")
+        m5, m6, m7, m8 = st.columns(4)
+        m5.metric("Gyro X", f"{latest['gyro_x_dps']:.1f} °/s")
+        m6.metric("Gyro Y", f"{latest['gyro_y_dps']:.1f} °/s")
+        m7.metric("Gyro Z", f"{latest['gyro_z_dps']:.1f} °/s")
+        m8.metric("Last Reading", latest['recorded_at'].strftime('%H:%M:%S'))
+        st.divider()
 
     col1, col2 = st.columns(2)
     with col1:
