@@ -118,25 +118,42 @@ def store_mpu6050_reading(
 def fetch_recent_mpu6050(
     *,
     limit: int = 500,
+    since: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ):
     ensure_mpu6050_table_exists(table_name=table_name)
 
-    sql = f"""
-    SELECT
-        recorded_at,
-        accel_x_g, accel_y_g, accel_z_g,
-        gyro_x_dps, gyro_y_dps, gyro_z_dps,
-        temperature_c, temperature_f,
-        is_simulated
-    FROM {table_name}
-    ORDER BY recorded_at DESC
-    LIMIT %s;
-    """
+    if since is None:
+        sql = f"""
+        SELECT
+            recorded_at,
+            accel_x_g, accel_y_g, accel_z_g,
+            gyro_x_dps, gyro_y_dps, gyro_z_dps,
+            temperature_c, temperature_f,
+            is_simulated
+        FROM {table_name}
+        ORDER BY recorded_at DESC
+        LIMIT %s;
+        """
+        params = (int(limit),)
+    else:
+        sql = f"""
+        SELECT
+            recorded_at,
+            accel_x_g, accel_y_g, accel_z_g,
+            gyro_x_dps, gyro_y_dps, gyro_z_dps,
+            temperature_c, temperature_f,
+            is_simulated
+        FROM {table_name}
+        WHERE recorded_at >= %s
+        ORDER BY recorded_at DESC
+        LIMIT %s;
+        """
+        params = (since, int(limit))
 
     with db_common.get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (int(limit),))
+            cur.execute(sql, params)
             rows = cur.fetchall()
 
     return [

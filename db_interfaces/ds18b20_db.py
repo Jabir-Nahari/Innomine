@@ -84,20 +84,32 @@ def store_ds18b20_reading(
 def fetch_recent_ds18b20(
     *,
     limit: int = 500,
+    since: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ):
     ensure_ds18b20_table_exists(table_name=table_name)
 
-    sql = f"""
-    SELECT recorded_at, celsius, fahrenheit, is_simulated
-    FROM {table_name}
-    ORDER BY recorded_at DESC
-    LIMIT %s;
-    """
+    if since is None:
+        sql = f"""
+        SELECT recorded_at, celsius, fahrenheit, is_simulated
+        FROM {table_name}
+        ORDER BY recorded_at DESC
+        LIMIT %s;
+        """
+        params = (int(limit),)
+    else:
+        sql = f"""
+        SELECT recorded_at, celsius, fahrenheit, is_simulated
+        FROM {table_name}
+        WHERE recorded_at >= %s
+        ORDER BY recorded_at DESC
+        LIMIT %s;
+        """
+        params = (since, int(limit))
 
     with db_common.get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (int(limit),))
+            cur.execute(sql, params)
             rows = cur.fetchall()
 
     return [

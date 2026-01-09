@@ -82,6 +82,7 @@ async def main() -> int:
     # Allow disabling UI if you want to run headless on the Pi.
     run_ui = os.getenv("RUN_STREAMLIT", "true").lower() in {"1", "true", "yes"}
     run_alarm = os.getenv("RUN_ALARM_WORKER", "true").lower() in {"1", "true", "yes"}
+    run_db_maintenance = os.getenv("RUN_DB_MAINTENANCE", "true").lower() in {"1", "true", "yes"}
 
     # Preflight: ensure Postgres is reachable *and* credentials work.
     pg_host = os.getenv("PGHOST", "localhost")
@@ -132,6 +133,9 @@ async def main() -> int:
         ("scd40", [sys.executable, "-m", "controllers.scd40_controller"]),
         ("mpu6050", [sys.executable, "-m", "controllers.mpu6050_controller"]),
     ]
+
+    if run_db_maintenance:
+        commands.append(("db_maintenance", [sys.executable, "-m", "controllers.db_maintenance_worker"]))
 
     # Alarm worker requires kafka-python. If kafka import is broken (e.g., SyntaxError from old package),
     # skip it by default so the rest of the stack can run.

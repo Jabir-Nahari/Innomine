@@ -86,20 +86,32 @@ def store_alarm_event(
 def fetch_recent_alarms(
     *,
     limit: int = 200,
+    since: Optional[datetime] = None,
     table_name: str = DEFAULT_TABLE_NAME,
 ):
     ensure_alarm_table_exists(table_name=table_name)
 
-    sql = f"""
-    SELECT triggered_at, sensor, metric, value, threshold, severity, message
-    FROM {table_name}
-    ORDER BY triggered_at DESC
-    LIMIT %s;
-    """
+    if since is None:
+        sql = f"""
+        SELECT triggered_at, sensor, metric, value, threshold, severity, message
+        FROM {table_name}
+        ORDER BY triggered_at DESC
+        LIMIT %s;
+        """
+        params = (int(limit),)
+    else:
+        sql = f"""
+        SELECT triggered_at, sensor, metric, value, threshold, severity, message
+        FROM {table_name}
+        WHERE triggered_at >= %s
+        ORDER BY triggered_at DESC
+        LIMIT %s;
+        """
+        params = (since, int(limit))
 
     with db_common.get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (int(limit),))
+            cur.execute(sql, params)
             rows = cur.fetchall()
 
     return [
