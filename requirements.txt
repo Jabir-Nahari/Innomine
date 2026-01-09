@@ -25,3 +25,6 @@ adafruit-circuitpython-neopixel>=6.3
 
 # Buzzer
 gpiozero>=2.0
+
+fastapi
+uvicorn[standard]

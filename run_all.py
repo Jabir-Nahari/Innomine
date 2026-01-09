@@ -156,8 +156,16 @@ async def main() -> int:
         if kafka_ok:
             commands.append(("alarm", [sys.executable, "-m", "controllers.alarm_worker"]))
 
+    # UI Mode: 'web' (default) or 'streamlit'
+    ui_mode = os.getenv("UI_MODE", "web").lower()
+    
     if run_ui:
-        commands.append(("ui", [sys.executable, "-m", "streamlit", "run", "user_interface/app.py"]))
+        if ui_mode == "streamlit":
+             commands.append(("ui", [sys.executable, "-m", "streamlit", "run", "user_interface/app.py"]))
+        else:
+             # Default to new web dashboard
+             # Listen on 0.0.0.0 to be accessible externally
+             commands.append(("ui", [sys.executable, "-m", "uvicorn", "web_dashboard.main:app", "--host", "0.0.0.0", "--port", "8000"]))
 
     procs: List[asyncio.subprocess.Process] = []
     try:

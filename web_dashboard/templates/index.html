@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InnoMine — The Palantir of Mines</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="brand">
+                <h1>⛏️ InnoMine</h1>
+                <span class="subtitle">The Palantir of Mines</span>
+            </div>
+            
+            <div class="clock-display">
+                <div id="clock-time">00:00:00</div>
+                <div id="clock-date">YYYY-MM-DD</div>
+            </div>
+            
+            <div class="live-indicator">
+                <span class="live-dot"></span>
+                LIVE
+            </div>
+        </header>
+
+        <!-- Main Grid Layout -->
+        <main class="dashboard-grid">
+            
+            <!-- Column 1: Health & Workers -->
+            <div class="col-left">
+                
+                <!-- Site Health Panel -->
+                <div class="panel health-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">📊 Real-Time Site Health</div>
+                        <span class="badge badge-live">LIVE</span>
+                    </div>
+                    
+                    <div class="metric-grid" id="site-health-grid">
+                        <!-- Populated by JS -->
+                        <div class="metric-loader">Loading metrics...</div>
+                    </div>
+                </div>
+
+                <!-- Unit 1 Real Data Card -->
+                <div class="panel unit-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">🎯 Unit 1 - Live Sensor Data</div>
+                        <span class="badge badge-live">REAL DATA</span>
+                    </div>
+                    <div class="metric-grid" id="unit1-grid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Active Workers Grid -->
+                <div class="panel workers-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">👷 Active Workers</div>
+                        <div class="view-selector">
+                            <span class="view-all active">All</span>
+                            <!-- Buttons added dynamically if needed -->
+                        </div>
+                    </div>
+                    <div class="worker-cards-grid" id="workers-grid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column 2: Alerts & Map -->
+            <div class="col-right">
+                
+                <!-- Alerts Panel -->
+                <div class="panel alerts-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">🚨 AI-Prioritized Alerts</div>
+                        <span class="badge badge-simulated">DEMO MODE</span>
+                    </div>
+                    <div class="alert-list" id="alert-list">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Geospatial Map Panel -->
+                <div class="panel map-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">🗺️ Mine Twin Map</div>
+                        <span class="badge badge-simulated">SIMULATED POSITIONS</span>
+                    </div>
+                    <div class="map-container" id="map-container">
+                        <div class="map-grid-bg"></div>
+                        <!-- Dots added via JS -->
+                    </div>
+                    <div class="map-legend">
+                        🟢 Normal • 🔴 Hazard • Dots are clickable
+                    </div>
+                </div>
+                
+                <!-- Settings / Config -->
+                <div class="panel config-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">⚙️ System Control</div>
+                    </div>
+                    <div class="config-form">
+                        <div class="form-group">
+                            <label>Buzzer Duration: <span id="dur-val">0.5</span>s</label>
+                            <input type="range" id="buzz-duration" min="0.5" max="5.0" step="0.5">
+                        </div>
+                        <div class="form-group">
+                            <label>Beeps: <span id="beep-val">2</span></label>
+                            <input type="range" id="buzz-beeps" min="1" max="5" step="1">
+                        </div>
+                        <div class="form-group row">
+                            <label>LED Enabled</label>
+                            <input type="checkbox" id="led-toggle">
+                        </div>
+                        <button id="save-config-btn" class="btn-primary">Update Config</button>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Worker Detail Modal -->
+    <div id="worker-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modal-title">Worker Details</h2>
+                <button id="close-modal">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-stats" id="modal-stats-grid"></div>
+                <div class="modal-chart-container">
+                    <h3>CO₂ History (Last 6 Hours)</h3>
+                    <canvas id="worker-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
