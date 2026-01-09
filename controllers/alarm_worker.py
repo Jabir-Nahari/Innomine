@@ -376,7 +376,7 @@ def run_db_polling_mode(thresholds: Thresholds, buzzer, led) -> None:
     """Poll the database directly for threshold violations."""
     poll_interval = _env_float("ALARM_POLL_INTERVAL_S", "2")
     logger.info(
-        "Alarm worker running in DB polling mode (interval=%.1fs). "
+        "Alarm worker running in DB polling mode [STRICT SENSORS] (interval=%.1fs). "
         "Thresholds: temp_c=%s, co2_ppm=%s, humidity_rh=%s",
         poll_interval,
         thresholds.temp_c_critical,

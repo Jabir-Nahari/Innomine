@@ -221,6 +221,12 @@ def simulate_miner(miner_id: int, real_data: Dict[str, Any] = None) -> MinerStat
 
 app = FastAPI(title="InnoMine API")
 
+@app.on_event("startup")
+async def startup_event():
+    print("\n" + "="*60)
+    print(">>> DASHBOARD BACKEND RESTARTED: FIXES APPLIED <<<")
+    print("="*60 + "\n")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

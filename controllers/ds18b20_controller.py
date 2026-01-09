@@ -139,6 +139,7 @@ def run_poll_loop(
     topic = kafka_topic or os.getenv("DS18B20_KAFKA_TOPIC", "ds18b20.readings")
     producer = _get_kafka_producer()
 
+    logger.info("DS18B20 Controller v2.0 - SINGLE SENSOR MODE")
     # Initialize DB table once to avoid deadlocks
     try:
         ensure_ds18b20_table_exists()
