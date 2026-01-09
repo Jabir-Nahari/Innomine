@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InnoMine — Mining Control Room Dashboard (MVP)</title>
+    <meta
+      name="description"
+      content="InnoMine — Static MVP dashboard for Saudi mining operations."
+    />
+    <link rel="icon" href="./assets/favicon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+    <!-- Chart.js CDN (allowed single lightweight chart lib) -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+      defer
+    ></script>
+    <!-- Load data first synchronously, then app -->
+    <script src="./data.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-header" role="banner">
+      <div class="brand">
+        <img src="./assets/logo-mark.svg" alt="InnoMine" class="logo" />
+        <h1 class="brand-title">InnoMine</h1>
+      </div>
+      <div class="controls" role="group" aria-label="Primary controls">
+        <button
+          id="liveToggle"
+          class="btn"
+          aria-pressed="true"
+          aria-label="Toggle Live Updates"
+        >
+          ⏸ Live
+        </button>
+        <button
+          id="muteToggle"
+          class="btn"
+          aria-pressed="false"
+          aria-label="Toggle Sound"
+        >
+          🔊 Sound
+        </button>
+      </div>
+      <div class="clock" aria-live="polite" aria-atomic="true">
+        <span id="clockText">--:--:--</span>
+      </div>
+    </header>
+
+    <div class="dashboard">
+      <!-- Header Stats -->
+      <section class="stats-bar">
+        <div class="stat-card">
+          <div class="stat-icon">👥</div>
+          <div class="stat-content">
+            <div class="stat-value" id="kpiTotalMiners">0</div>
+            <div class="stat-label">Active Miners</div>
+          </div>
+        </div>
+        <div class="stat-card" id="alertsStat">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-content">
+            <div class="stat-value" id="kpiActiveAlerts">0</div>
+            <div class="stat-label">Active Alerts</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-content">
+            <div class="stat-value" id="kpiAvgRisk">Low</div>
+            <div class="stat-label">Potential Risk</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Mine Sections -->
+      <section class="mine-sections">
+        <div class="sections-header">
+          <h3>Mine Sections</h3>
+          <p>Select a section to view miners</p>
+        </div>
+        <div class="sections-grid" id="sectionsGrid">
+          <!-- Section cards will be dynamically inserted here -->
+        </div>
+      </section>
+
+      <!-- Current Section & Filters -->
+      <section class="current-section">
+        <div class="section-info">
+          <h3 id="currentSectionTitle">All Sections</h3>
+          <p id="currentSectionDesc">Showing miners from all mine sections</p>
+        </div>
+        <div class="section-actions">
+          <button id="showAllSectionsBtn" class="control-btn">
+            <span class="btn-icon">🏗️</span> Show Sections
+          </button>
+        </div>
+      </section>
+
+      <!-- Filters & Controls -->
+      <section class="controls-section">
+        <div class="control-group">
+          <label class="control-label">Shift Filter</label>
+          <select id="shiftFilter" class="control-select">
+            <option value="ALL">All Shifts</option>
+            <option value="Day">Day Shift</option>
+            <option value="Night">Night Shift</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label class="control-label">Status Filter</label>
+          <select id="statusFilter" class="control-select">
+            <option value="ALL">All Status</option>
+            <option value="NORMAL">Normal</option>
+            <option value="WARNING">Warning</option>
+            <option value="DANGER">Danger</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label class="control-label">Search</label>
+          <input
+            id="searchInput"
+            type="search"
+            class="control-input"
+            placeholder="Search miners..."
+          />
+        </div>
+        <div class="control-group">
+          <button
+            id="liveToggle"
+            class="control-btn active"
+            aria-pressed="true"
+          >
+            <span class="btn-icon">⏸</span> Live
+          </button>
+        </div>
+        <div class="control-group">
+          <button id="communicateBtn" class="control-btn primary">
+            <span class="btn-icon">📢</span> Communicate
+          </button>
+        </div>
+      </section>
+
+      <!-- Miners Grid -->
+      <section class="miners-grid" id="minersGrid">
+        <!-- Miner cards will be dynamically inserted here -->
+      </section>
+
+      <!-- Insights Panel -->
+      <section class="insights-panel" id="insightsPanel">
+        <div class="insights-header">
+          <h3>AI Insights & Recommendations</h3>
+          <span class="insights-timestamp" id="insightsTime"
+            >Updated just now</span
+          >
+        </div>
+        <div class="insights-content" id="insightsContent">
+          <div class="insight-item">
+            <div class="insight-priority priority-safe">
+              <span class="priority-dot"></span>
+              <span>Normal Operations</span>
+            </div>
+            <p>
+              All miners are operating within safe parameters. Continue
+              monitoring.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Comms Overlay (simulated voice call/broadcast) -->
+    <div
+      id="commsOverlay"
+      class="comms-overlay"
+      aria-live="polite"
+      aria-atomic="true"
+      style="display: none"
+    >
+      <div class="comms-body">
+        <div class="comms-icon">🎙️</div>
+        <div class="comms-info">
+          <div class="comms-title" id="commsTitle">Connecting…</div>
+          <div class="comms-subtitle" id="commsSubtitle">
+            Establishing voice link
+          </div>
+          <div class="comms-timer" id="commsTimer">00:00</div>
+        </div>
+        <button
+          id="commsEndBtn"
+          class="comms-end"
+          aria-label="End communication"
+        >
+          ✕
+        </button>
+      </div>
+      <div class="comms-wave">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <!-- Miner Detail Modal -->
+    <div
+      id="modal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-labelledby="modalTitle"
+      aria-modal="true"
+    >
+      <div class="modal-backdrop" data-modal-close></div>
+      <div class="modal-content" role="document">
+        <header class="modal-header">
+          <div class="modal-title-section">
+            <h2 id="modalTitle">Miner Details</h2>
+            <div class="miner-status-badge" id="modalStatusBadge">Safe</div>
+          </div>
+          <button
+            id="modalClose"
+            class="modal-close-btn"
+            data-modal-close
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </header>
+
+        <div class="modal-body">
+          <!-- Overview Section -->
+          <section class="modal-section">
+            <h3>Overview</h3>
+            <div class="overview-grid">
+              <div class="overview-item">
+                <span class="overview-label">Name</span>
+                <span class="overview-value" id="modalName">-</span>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">ID</span>
+                <span class="overview-value" id="modalId">-</span>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">Site</span>
+                <span class="overview-value" id="modalSite">-</span>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">Shift</span>
+                <span class="overview-value" id="modalShift">-</span>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">Battery</span>
+                <div class="battery-indicator" id="modalBattery">-</div>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">Helmet Maintenance</span>
+                <span class="overview-value" id="modalHelmetDue">-</span>
+              </div>
+              <div class="overview-item">
+                <span class="overview-label">Last Update</span>
+                <span class="overview-value" id="modalLastUpdate">-</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Vital Signs -->
+          <section class="modal-section">
+            <h3>Vital Signs</h3>
+            <div class="metrics-grid">
+              <div class="metric-card" id="modalHR">
+                <div class="metric-icon">❤️</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">Heart Rate</div>
+                  <div class="metric-unit">BPM</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+              <div class="metric-card" id="modalHRV">
+                <div class="metric-icon">📊</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">HR Variability</div>
+                  <div class="metric-unit">ms</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+              <div class="metric-card" id="modalTemp">
+                <div class="metric-icon">🌡️</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">Temperature</div>
+                  <div class="metric-unit">°C</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Environmental Data -->
+          <section class="modal-section">
+            <h3>Environmental Conditions</h3>
+            <div class="metrics-grid">
+              <div class="metric-card" id="modalO2">
+                <div class="metric-icon">💨</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">Oxygen</div>
+                  <div class="metric-unit">%</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+              <div class="metric-card" id="modalCO">
+                <div class="metric-icon">☁️</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">Carbon Monoxide</div>
+                  <div class="metric-unit">ppm</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+              <div class="metric-card" id="modalH2S">
+                <div class="metric-icon">⚠️</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">Hydrogen Sulfide</div>
+                  <div class="metric-unit">ppm</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+              <div class="metric-card" id="modalCH4">
+                <div class="metric-icon">🔥</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">Methane</div>
+                  <div class="metric-unit">% LEL</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+              <div class="metric-card" id="modalNoise">
+                <div class="metric-icon">🔊</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">Noise Level</div>
+                  <div class="metric-unit">dBA</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+              <div class="metric-card" id="modalSway">
+                <div class="metric-icon">🏃</div>
+                <div class="metric-content">
+                  <div class="metric-value">-</div>
+                  <div class="metric-label">Motion</div>
+                  <div class="metric-unit">sway</div>
+                </div>
+                <div class="metric-status"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Risk Trend Chart -->
+          <section class="modal-section">
+            <h3>Risk Trend (Last 60 minutes)</h3>
+            <div class="chart-container">
+              <canvas id="modalSparkline" height="120"></canvas>
+            </div>
+          </section>
+
+          <!-- AI Insights for this Miner -->
+          <section class="modal-section">
+            <h3>AI Analysis & Recommendations</h3>
+            <div class="miner-insights" id="minerInsights">
+              <div class="insight-card">
+                <div class="insight-priority priority-safe">
+                  <span class="priority-dot"></span>
+                  <span>Health Status</span>
+                </div>
+                <p>Miner is within normal vital sign ranges.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="toast"
+      class="toast"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+
+    <footer class="footer" role="contentinfo">
+      <span>© InnoMine — MVP demo (dummy data) — MIT License</span>
+      <div class="footer-actions">
+        <button id="exportBtn" class="btn small">Export JSON</button>
+        <button id="screenshotBtn" class="btn small">Screenshot</button>
+      </div>
+    </footer>
+
+    <!-- Audio for alerts (optional, muted by default via control) -->
+    <audio id="beepAudio">
+      <source
+        src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA="
+        type="audio/wav"
+      />
+    </audio>
+  </body>
+</html>

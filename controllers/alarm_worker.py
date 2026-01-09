@@ -1,8 +1,8 @@
-"""Kafka-based alarm worker that drives a buzzer.
+"""Kafka-based alarm worker that drives a buzzer and LED.
 
 - Consumes sensor reading events from Kafka.
 - Checks thresholds (temperature, CO2, etc.).
-- If exceeded: buzzes (gpiozero) and publishes an alarm event.
+- If exceeded: buzzes (gpiozero), lights LED, and publishes an alarm event.
 - Also logs alarm events to Postgres.
 
 Kafka dependency:
@@ -17,9 +17,9 @@ Env vars:
 - ALARM_PUBLISH_TOPIC (default alarms.events)
 
 Thresholds:
-- TEMP_C_CRITICAL (default 50)
-- CO2_PPM_CRITICAL (default 2000)
-- HUMIDITY_RH_CRITICAL (default 90)
+- TEMP_C_CRITICAL (default 38.0) - Human body fever threshold
+- CO2_PPM_CRITICAL (default 1000) - Elevated CO2, soda can detection
+- HUMIDITY_RH_CRITICAL (default 85) - High humidity discomfort
 
 Buzzer:
 - BUZZER_GPIO_PIN (default 17)
@@ -27,6 +27,10 @@ Buzzer:
 - BUZZER_ON_S (default 0.5)
 - BUZZER_OFF_S (default 0.5)
 - BUZZER_BEEPS (default 3)
+
+LED:
+- LED_GPIO_PIN (default 27)
+- LED_ACTIVE_HIGH (default true)
 """
 
 from __future__ import annotations
@@ -41,9 +45,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 try:  # optional dependency (Pi only)
-    from gpiozero import Buzzer  # type: ignore
+    from gpiozero import Buzzer, LED  # type: ignore
 except Exception:  # pragma: no cover
     Buzzer = None  # type: ignore
+    LED = None  # type: ignore
 
 try:  # optional dependency
     from kafka import KafkaConsumer, KafkaProducer  # type: ignore
@@ -97,9 +102,9 @@ def _env_bool(name: str, default: str) -> bool:
 
 def _get_thresholds() -> Thresholds:
     return Thresholds(
-        temp_c_critical=_env_float("TEMP_C_CRITICAL", "50"),
-        co2_ppm_critical=_env_float("CO2_PPM_CRITICAL", "2000"),
-        humidity_rh_critical=_env_float("HUMIDITY_RH_CRITICAL", "90"),
+        temp_c_critical=_env_float("TEMP_C_CRITICAL", "38.0"),  # Human body fever threshold
+        co2_ppm_critical=_env_float("CO2_PPM_CRITICAL", "1000"),  # Soda can CO2 detection
+        humidity_rh_critical=_env_float("HUMIDITY_RH_CRITICAL", "85"),  # High humidity
     )
 
 
@@ -123,15 +128,38 @@ def _get_buzzer():
     return Buzzer(pin, active_high=active_high)
 
 
-def _beep(buzzer) -> None:
+def _get_led():
+    if LED is None:  # pragma: no cover
+        logger.warning(
+            "gpiozero not available. LED OUTPUT WILL BE SIMULATED (no GPIO)."
+        )
+
+        class _SimLED:
+            def on(self):
+                logger.warning("LED SIMULATED: ON")
+
+            def off(self):
+                logger.warning("LED SIMULATED: OFF")
+
+        return _SimLED()
+
+    pin = _env_int("LED_GPIO_PIN", "27")
+    active_high = _env_bool("LED_ACTIVE_HIGH", "true")
+    return LED(pin, active_high=active_high)
+
+
+def _beep(buzzer, led) -> None:
+    """Activate buzzer and LED for alarm indication."""
     on_s = _env_float("BUZZER_ON_S", "0.5")
     off_s = _env_float("BUZZER_OFF_S", "0.5")
     beeps = _env_int("BUZZER_BEEPS", "3")
 
     for _ in range(beeps):
         buzzer.on()
+        led.on()
         time.sleep(on_s)
         buzzer.off()
+        led.off()
         time.sleep(off_s)
 
 
@@ -213,6 +241,7 @@ def evaluate_and_alarm(
     payload: Dict[str, Any],
     thresholds: Thresholds,
     buzzer,
+    led,
     kafka_producer,
     alarm_topic: str,
 ) -> Optional[Dict[str, Any]]:
@@ -239,7 +268,7 @@ def evaluate_and_alarm(
             "message": f"CO2 critical: {co2} ppm (>= {thresholds.co2_ppm_critical})",
             "recorded_at": ts,
         }
-        _beep(buzzer)
+        _beep(buzzer, led)
         kafka_producer.send(alarm_topic, event)
         store_alarm_event(
             sensor=sensor,
@@ -267,7 +296,7 @@ def evaluate_and_alarm(
             "message": f"Temperature critical: {temp_c} C (>= {thresholds.temp_c_critical})",
             "recorded_at": ts,
         }
-        _beep(buzzer)
+        _beep(buzzer, led)
         kafka_producer.send(alarm_topic, event)
         store_alarm_event(
             sensor=sensor,
@@ -292,7 +321,7 @@ def evaluate_and_alarm(
             "message": f"Humidity critical: {hum}% (>= {thresholds.humidity_rh_critical})",
             "recorded_at": ts,
         }
-        _beep(buzzer)
+        _beep(buzzer, led)
         kafka_producer.send(alarm_topic, event)
         store_alarm_event(
             sensor=sensor,
@@ -317,6 +346,14 @@ def run() -> None:
 
     thresholds = _get_thresholds()
     buzzer = _get_buzzer()
+    led = _get_led()
+
+    logger.info(
+        "Alarm worker starting with thresholds: temp_c=%s, co2_ppm=%s, humidity_rh=%s",
+        thresholds.temp_c_critical,
+        thresholds.co2_ppm_critical,
+        thresholds.humidity_rh_critical,
+    )
 
     backoff_s = 1.0
     max_backoff_s = float(os.getenv("KAFKA_RETRY_MAX_S", "30"))
@@ -336,6 +373,7 @@ def run() -> None:
                     payload=payload,
                     thresholds=thresholds,
                     buzzer=buzzer,
+                    led=led,
                     kafka_producer=producer,
                     alarm_topic=alarm_topic,
                 )

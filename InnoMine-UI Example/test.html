@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InnoMine Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+      .test-result {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+      }
+      .pass {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      .fail {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      .info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>InnoMine Static Data Test</h1>
+    <div id="results"></div>
+
+    <script src="./data.js"></script>
+    <script>
+      function testData() {
+        const results = document.getElementById("results");
+
+        function addResult(message, type = "info") {
+          const div = document.createElement("div");
+          div.className = `test-result ${type}`;
+          div.textContent = message;
+          results.appendChild(div);
+        }
+
+        try {
+          // Test 1: Check if InnoMineData is available
+          if (!window.InnoMineData) {
+            addResult("❌ InnoMineData not available", "fail");
+            return;
+          }
+          addResult("✅ InnoMineData loaded successfully", "pass");
+
+          // Test 2: Check MINE_SECTIONS
+          const sections = window.InnoMineData.MINE_SECTIONS;
+          if (!sections || sections.length === 0) {
+            addResult("❌ No mine sections found", "fail");
+            return;
+          }
+          addResult(
+            `✅ Found ${sections.length} mine sections: ${sections.join(", ")}`,
+            "pass"
+          );
+
+          // Test 3: Check MINERS
+          const miners = window.InnoMineData.MINERS;
+          if (!miners || miners.length === 0) {
+            addResult("❌ No miners found", "fail");
+            return;
+          }
+          addResult(`✅ Found ${miners.length} miners`, "pass");
+
+          // Test 4: Check getMineSections function
+          if (!window.InnoMineData.getMineSections) {
+            addResult("❌ getMineSections function not available", "fail");
+            return;
+          }
+          const sectionsFromFn = window.InnoMineData.getMineSections();
+          addResult(
+            `✅ getMineSections() returned ${sectionsFromFn.length} sections`,
+            "pass"
+          );
+
+          // Test 5: Check getMinersBySection function
+          if (!window.InnoMineData.getMinersBySection) {
+            addResult("❌ getMinersBySection function not available", "fail");
+            return;
+          }
+          const minersInFirstSection = window.InnoMineData.getMinersBySection(
+            sections[0]
+          );
+          addResult(
+            `✅ getMinersBySection('${sections[0]}') returned ${minersInFirstSection.length} miners`,
+            "pass"
+          );
+
+          // Test 6: Check randomizeTick function
+          if (!window.InnoMineData.randomizeTick) {
+            addResult("❌ randomizeTick function not available", "fail");
+            return;
+          }
+          const testMiner = { ...miners[0] };
+          window.InnoMineData.randomizeTick(testMiner);
+          addResult("✅ randomizeTick() executed successfully", "pass");
+
+          addResult(
+            "🎉 All data tests passed! The static data is working correctly.",
+            "pass"
+          );
+        } catch (error) {
+          addResult(`❌ Test failed with error: ${error.message}`, "fail");
+          console.error(error);
+        }
+      }
+
+      // Run test when data is loaded
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", testData);
+      } else {
+        testData();
+      }
+    </script>
+  </body>
+</html>

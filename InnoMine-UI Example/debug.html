@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InnoMine Debug</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      .debug-section {
+        background: #1e293b;
+        padding: 20px;
+        margin: 10px 0;
+        border-radius: 8px;
+      }
+      .success {
+        border-left: 4px solid #10b981;
+      }
+      .error {
+        border-left: 4px solid #ef4444;
+      }
+      .info {
+        border-left: 4px solid #3b82f6;
+      }
+      pre {
+        background: #0f172a;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>InnoMine Debug Console</h1>
+
+    <div class="debug-section info">
+      <h3>🔍 Data Loading Test</h3>
+      <div id="data-test">Testing data loading...</div>
+    </div>
+
+    <div class="debug-section info">
+      <h3>🏗️ Mine Sections Test</h3>
+      <div id="sections-test">Testing sections...</div>
+    </div>
+
+    <div class="debug-section info">
+      <h3>👷 Miners Test</h3>
+      <div id="miners-test">Testing miners...</div>
+    </div>
+
+    <script src="./data.js"></script>
+    <script>
+      function runDebugTests() {
+        console.log("=== InnoMine Debug Tests ===");
+
+        // Test 1: Check if InnoMineData exists
+        const dataTest = document.getElementById("data-test");
+        if (!window.InnoMineData) {
+          dataTest.innerHTML =
+            '<span style="color: #ef4444;">❌ InnoMineData not found on window object</span>';
+          dataTest.className = "debug-section error";
+          return;
+        }
+
+        dataTest.innerHTML =
+          '<span style="color: #10b981;">✅ InnoMineData loaded successfully</span>';
+        dataTest.className = "debug-section success";
+
+        console.log("✅ InnoMineData:", window.InnoMineData);
+
+        // Test 2: Check MINE_SECTIONS
+        const sectionsTest = document.getElementById("sections-test");
+        const sections = window.InnoMineData.MINE_SECTIONS;
+        if (!sections || !Array.isArray(sections) || sections.length === 0) {
+          sectionsTest.innerHTML =
+            '<span style="color: #ef4444;">❌ MINE_SECTIONS not found or empty</span>';
+          sectionsTest.className = "debug-section error";
+        } else {
+          sectionsTest.innerHTML = `
+                    <span style="color: #10b981;">✅ Found ${
+                      sections.length
+                    } sections:</span>
+                    <pre>${sections.map((s) => `  - ${s}`).join("\n")}</pre>
+                `;
+          sectionsTest.className = "debug-section success";
+        }
+
+        console.log("✅ MINE_SECTIONS:", sections);
+
+        // Test 3: Check MINERS
+        const minersTest = document.getElementById("miners-test");
+        const miners = window.InnoMineData.MINERS;
+        if (!miners || !Array.isArray(miners) || miners.length === 0) {
+          minersTest.innerHTML =
+            '<span style="color: #ef4444;">❌ MINERS not found or empty</span>';
+          minersTest.className = "debug-section error";
+        } else {
+          // Count miners per section
+          const sectionCounts = {};
+          miners.forEach((miner) => {
+            const section = miner.section;
+            sectionCounts[section] = (sectionCounts[section] || 0) + 1;
+          });
+
+          minersTest.innerHTML = `
+                    <span style="color: #10b981;">✅ Found ${
+                      miners.length
+                    } miners</span>
+                    <div style="margin-top: 10px;">
+                        <strong>Distribution by section:</strong>
+                        <pre>${Object.entries(sectionCounts)
+                          .map(
+                            ([section, count]) =>
+                              `  - ${section}: ${count} miners`
+                          )
+                          .join("\n")}</pre>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <strong>Sample miners:</strong>
+                        <pre>${miners
+                          .slice(0, 3)
+                          .map((m) => `  - ${m.name} (${m.section})`)
+                          .join("\n")}</pre>
+                    </div>
+                `;
+          minersTest.className = "debug-section success";
+        }
+
+        console.log("✅ MINERS:", miners?.length || 0, "total");
+
+        // Test 4: Check functions
+        console.log(
+          "✅ getMineSections function:",
+          window.InnoMineData.getMineSections
+        );
+        console.log(
+          "✅ getMinersBySection function:",
+          window.InnoMineData.getMinersBySection
+        );
+
+        if (window.InnoMineData.getMineSections) {
+          const sectionsFromFn = window.InnoMineData.getMineSections();
+          console.log("✅ getMineSections() result:", sectionsFromFn);
+        }
+
+        console.log("=== Debug Tests Complete ===");
+      }
+
+      // Run tests when page loads
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", runDebugTests);
+      } else {
+        runDebugTests();
+      }
+    </script>
+  </body>
+</html>
